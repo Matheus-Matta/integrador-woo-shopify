@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ── Uso ───────────────────────────────────────────────────────────────────────
 # Desenvolvimento: docker compose up
 # Produção:        docker compose -f docker-compose.yml -f docker-compose.prod.yml up
