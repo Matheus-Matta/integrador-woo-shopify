@@ -1,0 +1,33 @@
+{
+  "name": "integrador-shopify-woo",
+  "version": "1.0.0",
+  "description": "Integrador Shopify <-> WooCommerce via webhooks",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/dashboard',{recursive:true});['index.html','login.html'].forEach(f=>fs.copyFileSync('src/dashboard/'+f,'dist/dashboard/'+f))\"",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/static": "^9.1.0",
+    "@fastify/websocket": "^11.2.0",
+    "axios": "^1.7.2",
+    "bullmq": "^5.73.1",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.8.4",
+    "ioredis": "^5.4.1",
+    "mongoose": "^8.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "pino-pretty": "^13.1.3",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  }
+}

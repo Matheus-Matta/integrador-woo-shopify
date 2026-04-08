@@ -1,0 +1,19 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Ambiente — NUNCA commitar segredos reais
+.env
+.env.local
+.env.production
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+*.swp

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Integrador</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .tab-btn { @apply px-4 py-2 text-sm font-medium rounded-lg transition; }
+    .tab-btn.active { @apply bg-indigo-600 text-white; }
+    .tab-btn:not(.active) { @apply text-gray-400 hover:text-white hover:bg-gray-700; }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen" x-data="dashboard()" x-init="init()" x-cloak>
+
+  <!-- Toast container -->
+  <div class="fixed bottom-4 right-4 z-50 space-y-2 w-80" x-ref="toastArea">
+    <template x-for="(t, i) in toasts" :key="i">
+      <div
+        class="rounded-lg px-4 py-3 text-sm shadow-lg flex items-start gap-2"
+        :class="t.type === 'error' ? 'bg-red-700' : t.type === 'queue' ? 'bg-yellow-700' : 'bg-indigo-700'"
+        x-text="t.message"
+      ></div>
+    </template>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-xl font-bold">⚡ Integrador</span>
+      <span
+        class="text-xs px-2 py-0.5 rounded-full font-medium"
+        :class="wsConnected ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'"
+        x-text="wsConnected ? 'Conectado' : 'Desconectado'"
+      ></span>
+    </div>
+    <a href="/dashboard/logout" class="text-sm text-gray-400 hover:text-white transition">Sair</a>
+  </header>
+
+  <main class="p-6 max-w-7xl mx-auto space-y-6">
+
+    <!-- Tabs -->
+    <div class="flex gap-2 flex-wrap">
+      <template x-for="tab in tabs" :key="tab.key">
+        <button
+          @click="activeTab = tab.key; activeTab !== 'queues' && loadLogs()"
+          :class="activeTab === tab.key ? 'active' : ''"
+          class="tab-btn"
+          x-text="tab.label"
+        ></button>
+      </template>
+    </div>
+
+    <!-- Painel Logs (produto / cliente / pedido / erro) -->
+    <div x-show="activeTab !== 'queues'">
+
+      <!-- Controles -->
+      <div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
+        <div class="text-sm text-gray-400">
+          Total: <span x-text="total"></span> registros
+        </div>
+        <div class="flex gap-2 items-center">
+          <select
+            x-model="limit"
+            @change="page = 1; loadLogs()"
+            class="bg-gray-700 border border-gray-600 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="20">20 / pág</option>
+            <option value="50" selected>50 / pág</option>
+            <option value="100">100 / pág</option>
+          </select>
+          <button
+            @click="loadLogs()"
+            class="bg-gray-700 hover:bg-gray-600 text-sm px-3 py-1.5 rounded-lg transition"
+          >↺ Atualizar</button>
+        </div>
+      </div>
+
+      <!-- Tabela -->
+      <div class="bg-gray-800 rounded-xl overflow-auto border border-gray-700">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-700 text-gray-400 text-left">
+              <template x-for="col in columns" :key="col">
+                <th class="px-4 py-3 font-medium" x-text="col"></th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-if="loading">
+              <tr>
+                <td :colspan="columns.length" class="text-center py-10 text-gray-500">Carregando...</td>
+              </tr>
+            </template>
+            <template x-if="!loading && rows.length === 0">
+              <tr>
+                <td :colspan="columns.length" class="text-center py-10 text-gray-500">Nenhum registro</td>
+              </tr>
+            </template>
+            <template x-for="(row, idx) in rows" :key="idx">
+              <tr class="border-b border-gray-700 hover:bg-gray-750 transition cursor-pointer" @click="selectedRow = row" title="Clique para ver detalhes">
+                <template x-for="col in rawKeys" :key="col">
+                  <td class="px-4 py-2 max-w-xs truncate">
+                    <span
+                      x-text="formatCell(row[col])"
+                      :title="JSON.stringify(row[col])"
+                      :class="col === 'status' ? statusClass(row[col]) : ''"
+                    ></span>
+                  </td>
+                </template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginação -->
+      <div class="flex items-center justify-between mt-4 text-sm">
+        <button
+          @click="page--; loadLogs()"
+          :disabled="page <= 1"
+          class="px-3 py-1.5 rounded-lg bg-gray-700 disabled:opacity-40 hover:bg-gray-600 transition"
+        >← Anterior</button>
+        <span class="text-gray-400">Página <span x-text="page"></span> de <span x-text="pages"></span></span>
+        <button
+          @click="page++; loadLogs()"
+          :disabled="page >= pages"
+          class="px-3 py-1.5 rounded-lg bg-gray-700 disabled:opacity-40 hover:bg-gray-600 transition"
+        >Próxima →</button>
+      </div>
+    </div>
+
+    <!-- Painel Filas -->
+    <div x-show="activeTab === 'queues'">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">Status das Filas</h2>
+        <button
+          @click="loadQueueStats()"
+          class="bg-gray-700 hover:bg-gray-600 text-sm px-3 py-1.5 rounded-lg transition"
+        >↺ Atualizar</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <template x-for="(q, name) in queueStats" :key="name">
+          <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold capitalize" x-text="name"></h3>
+              <button
+                @click="retryFailed(name)"
+                class="text-xs bg-yellow-700 hover:bg-yellow-600 px-3 py-1 rounded-lg transition"
+              >Retentar falhas</button>
+            </div>
+            <div class="grid grid-cols-5 gap-2 text-center text-xs">
+              <template x-for="stat in ['waiting','active','completed','failed','delayed']" :key="stat">
+                <div class="bg-gray-700 rounded-lg p-2">
+                  <p class="font-bold text-lg"
+                    :class="stat === 'failed' && q[stat] > 0 ? 'text-red-400' : stat === 'active' ? 'text-green-400' : 'text-white'"
+                    x-text="q[stat] ?? 0"></p>
+                  <p class="text-gray-400 capitalize" x-text="stat"></p>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="Object.keys(queueStats).length === 0">
+          <p class="text-gray-500 col-span-2 text-center py-10">Carregando estatísticas...</p>
+        </template>
+      </div>
+    </div>
+
+    <!-- Painel Webhooks -->
+    <div x-show="activeTab === 'webhooks'">
+      <div class="flex flex-wrap items-center justify-between mb-4 gap-3">
+        <h2 class="text-lg font-semibold">Sincronização de Webhooks</h2>
+        <div class="flex gap-2 flex-wrap">
+          <button
+            @click="loadWebhookStatus()"
+            :disabled="webhookLoading"
+            class="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-sm px-3 py-1.5 rounded-lg transition"
+          >↺ Verificar status</button>
+          <button
+            @click="syncWebhooks()"
+            :disabled="webhookLoading"
+            class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-sm px-4 py-1.5 rounded-lg transition font-semibold"
+          >
+            <span x-show="!webhookLoading">⚡ Sincronizar agora</span>
+            <span x-show="webhookLoading">Aguarde...</span>
+          </button>
+          <button
+            @click="syncWebhooks(true)"
+            :disabled="webhookLoading"
+            title="Deleta todos os webhooks existentes e recria do zero apontando para o domínio atual"
+            class="bg-red-700 hover:bg-red-600 disabled:opacity-40 text-sm px-3 py-1.5 rounded-lg transition font-semibold"
+          >🔄 Forçar Recriação</button>
+        </div>
+      </div>
+
+      <!-- Domínio configurado (read-only, vem do .env) -->
+      <div class="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
+        <div class="flex-1 min-w-48">
+          <label class="block text-xs text-gray-400 mb-1">Domínio do integrador <span class="text-gray-600">(configurado no .env → DOMAIN)</span></label>
+          <div class="flex items-center gap-2">
+            <span
+              class="flex-1 bg-gray-900 border border-gray-700 text-sm rounded-lg px-3 py-2 text-indigo-300 font-mono truncate"
+              x-text="webhookDomain || 'Não configurado — defina DOMAIN no .env'"
+              :class="webhookDomain ? '' : 'text-red-400'"
+            ></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resultado do status / sincronização -->
+      <template x-if="webhookError">
+        <div class="bg-red-900 border border-red-700 text-red-200 text-sm rounded-xl px-4 py-3 mb-4" x-text="webhookError"></div>
+      </template>
+
+      <template x-if="webhookResults.length > 0">
+        <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-700 text-gray-400 text-left">
+                <th class="px-4 py-3">Plataforma</th>
+                <th class="px-4 py-3">Tópico</th>
+                <th class="px-4 py-3">Endpoint esperado</th>
+                <th class="px-4 py-3">URL cadastrada</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3">ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(r, i) in webhookResults" :key="i">
+                <tr class="border-b border-gray-700">
+                  <td class="px-4 py-2 capitalize" x-text="r.platform"></td>
+                  <td class="px-4 py-2 font-mono text-xs" x-text="r.topic"></td>
+                  <td class="px-4 py-2 text-xs truncate max-w-xs" :title="r.endpoint" x-text="r.endpoint?.replace(/^https?:\/\/[^/]+/, '')"></td>
+                  <td class="px-4 py-2 text-xs font-mono truncate max-w-xs"
+                      :title="r.registeredUrl || r.endpoint"
+                      :class="r.registeredUrl && r.registeredUrl !== r.endpoint ? 'text-yellow-400' : 'text-gray-500'"
+                      x-text="r.registeredUrl ? r.registeredUrl.replace(/^https?:\/\/[^/]+/, '') : (r.status === 'created' ? '(criado agora)' : '—')"
+                  ></td>
+                  <td class="px-4 py-2">
+                    <span
+                      class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="{
+                        'bg-green-800 text-green-300': r.status === 'ok' || r.exists === true,
+                        'bg-indigo-800 text-indigo-300': r.status === 'created',
+                        'bg-red-800 text-red-300': r.status === 'error' || r.exists === false,
+                        'bg-yellow-800 text-yellow-300': r.exists === false && r.status === undefined
+                      }"
+                      x-text="r.status === 'created' ? '✅ Criado' : r.status === 'ok' || r.exists ? '✔ Existe' : r.status === 'error' ? '❌ Erro' : '⚠ Ausente'"
+                    ></span>
+                  </td>
+                  <td class="px-4 py-2 text-xs text-gray-400 font-mono" x-text="r.id ?? r.error ?? '—'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+      <template x-if="webhookResults.length === 0 && !webhookLoading && !webhookError">
+        <p class="text-gray-500 text-sm text-center py-10">Clique em "Verificar status" ou "Sincronizar agora" para começar.</p>
+      </template>
+    </div>
+
+  </main>
+
+  <!-- ── Modal de detalhes do log ────────────────────────────────────────── -->
+  <div
+    x-show="selectedRow !== null"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+    @click.self="selectedRow = null"
+    @keydown.escape.window="selectedRow = null"
+    style="display:none"
+  >
+    <div class="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+        <div>
+          <h3 class="font-semibold text-white">Detalhes do registro</h3>
+          <p class="text-xs text-gray-400 mt-0.5" x-text="selectedRow ? (selectedRow.action ?? selectedRow.flow ?? '') + (selectedRow.shopify_order_id ? ' — Pedido #' + selectedRow.shopify_order_id : '') + (selectedRow.email ? ' — ' + selectedRow.email : '') + (selectedRow.sku ? ' — SKU ' + selectedRow.sku : '') : ''"></p>
+        </div>
+        <button @click="selectedRow = null" class="text-gray-400 hover:text-white text-xl leading-none ml-4">✕</button>
+      </div>
+      <!-- Body -->
+      <div class="overflow-y-auto flex-1 p-5 space-y-5">
+        <template x-for="sec in detailSections(selectedRow)" :key="sec.label">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400" x-text="sec.label"></p>
+              <button
+                @click="copyToClipboard(sec.json)"
+                class="text-xs text-gray-500 hover:text-white bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded transition"
+              >Copiar</button>
+            </div>
+            <pre class="bg-gray-900 rounded-lg p-3 text-xs text-green-300 overflow-auto whitespace-pre-wrap break-words leading-relaxed" x-text="sec.json"></pre>
+          </div>
+        </template>
+        <template x-if="detailSections(selectedRow).length === 0">
+          <p class="text-gray-500 text-sm text-center py-6">Nenhum dado adicional disponível para este registro.</p>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const COLS_MAP = {
+      product:  { display: ['Data','SKU','Ação','Status'], keys: ['timestamp','sku','action','status'] },
+      customer: { display: ['Data','Email','ID Woo','Ação','Status'], keys: ['timestamp','email','woo_customer_id','action','status'] },
+      order:    { display: ['Data','ID Shopify','ID Woo','Ação','Status'], keys: ['timestamp','shopify_order_id','woo_order_id','action','status'] },
+      error:    { display: ['Data','Flow','Erro','Payload'], keys: ['timestamp','flow','error_message','payload'] },
+    };
+
+    function dashboard() {
+      return {
+        tabs: [
+          { key: 'order',    label: '📦 Pedidos'   },
+          { key: 'customer', label: '👤 Clientes'  },
+          { key: 'product',  label: '🏷️ Produtos'   },
+          { key: 'error',    label: '❌ Erros'      },
+          { key: 'queues',   label: '⚙️ Filas'      },
+          { key: 'webhooks', label: '🔗 Webhooks'   },
+        ],
+        activeTab: 'order',
+        rows: [],
+        total: 0,
+        pages: 1,
+        page: 1,
+        limit: 50,
+        loading: false,
+        queueStats: {},
+        toasts: [],
+        wsConnected: false,
+        wsToken: '',
+        webhookDomain: '',
+        webhookResults: [],
+        webhookLoading: false,
+        webhookError: '',
+        selectedRow: null,
+
+        get columns()  { return COLS_MAP[this.activeTab]?.display ?? []; },
+        get rawKeys()  { return COLS_MAP[this.activeTab]?.keys   ?? []; },
+
+        async init() {
+          await this.loadLogs();
+          await this.loadQueueStats();
+          // Carrega domínio direto do config (sem chamadas externas)
+          try {
+            const r = await fetch('/dashboard/api/config', { credentials: 'include' });
+            if (r.ok) { const j = await r.json(); this.webhookDomain = j.domain ?? ''; }
+          } catch { /* silencioso */ }
+          this.connectWs();
+        },
+
+        async loadLogs() {
+          if (this.activeTab === 'queues') return;
+          this.loading = true;
+          try {
+            const res = await fetch(
+              `/dashboard/api/logs?type=${this.activeTab}&page=${this.page}&limit=${this.limit}`,
+              { credentials: 'include' }
+            );
+            if (res.status === 401) { window.location.href = '/dashboard/login'; return; }
+            const json = await res.json();
+            this.rows  = json.data  ?? [];
+            this.total = json.total ?? 0;
+            this.pages = json.pages ?? 1;
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        async loadQueueStats() {
+          const res = await fetch('/dashboard/api/queue-stats', { credentials: 'include' });
+          if (res.ok) this.queueStats = await res.json();
+        },
+
+        async retryFailed(name) {
+          const res = await fetch(`/dashboard/api/queue/${name}/retry-failed`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (res.ok) {
+            const { retriedCount } = await res.json();
+            this.toast(`${retriedCount} job(s) reenfileirado(s)`, 'queue');
+            await this.loadQueueStats();
+          }
+        },
+
+        async loadWebhookStatus() {
+          this.webhookLoading = true;
+          this.webhookError = '';
+          this.webhookResults = [];
+          try {
+            const url = this.webhookDomain
+              ? `/dashboard/api/webhooks/status?domain=${encodeURIComponent(this.webhookDomain)}`
+              : '/dashboard/api/webhooks/status';
+            const res = await fetch(url, { credentials: 'include' });
+            const json = await res.json();
+            if (!res.ok) { this.webhookError = json.error ?? 'Erro desconhecido'; return; }
+            this.webhookDomain = json.domain || this.webhookDomain;
+            const rows = [...(json.shopify ?? []), ...(json.woocommerce ?? [])];
+            this.webhookResults = rows;
+          } catch (e) {
+            this.webhookError = e.message;
+          } finally {
+            this.webhookLoading = false;
+          }
+        },
+
+        async syncWebhooks(force = false) {
+          if (force && !confirm('Isso vai DELETAR todos os webhooks existentes no Shopify e WooCommerce e recriar apontando para o domínio atual. Continuar?')) return;
+          this.webhookLoading = true;
+          this.webhookError = '';
+          this.webhookResults = [];
+          try {
+            const res = await fetch('/dashboard/api/webhooks/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ force }),
+            });
+            const json = await res.json();
+            if (!res.ok && res.status !== 207) { this.webhookError = json.error ?? 'Erro na sincronização'; return; }
+            this.webhookResults = json.results ?? [];
+            const created  = this.webhookResults.filter(r => r.status === 'created').length;
+            const existing = this.webhookResults.filter(r => r.status === 'ok').length;
+            const errors   = this.webhookResults.filter(r => r.status === 'error').length;
+            const parts = [];
+            if (existing) parts.push(`${existing} existente(s)`);
+            if (created)  parts.push(`${created} criado(s)`);
+            if (errors)   parts.push(`${errors} erro(s)`);
+            this.toast(`Sync: ${parts.join(', ') || 'nenhum resultado'}`, errors ? 'error' : 'ok');
+          } catch (e) {
+            this.webhookError = e.message;
+          } finally {
+            this.webhookLoading = false;
+          }
+        },
+
+        async connectWs() {
+          // O cookie httpOnly 'dash_token' é enviado automaticamente pelo browser
+          // no upgrade do WebSocket (mesmo domínio, sameSite:strict) — sem token em URL
+          const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+          const ws = new WebSocket(`${proto}://${location.host}/dashboard/ws`);
+
+          ws.onopen = () => { this.wsConnected = true; };
+          ws.onclose = () => {
+            this.wsConnected = false;
+            setTimeout(() => this.connectWs(), 5000);
+          };
+          ws.onerror = () => { this.wsConnected = false; };
+          ws.onmessage = (evt) => {
+            try {
+              const ev = JSON.parse(evt.data);
+              if (ev.type === 'error') return;
+
+              const isQueue = 'queue' in ev;
+              if (isQueue) {
+                if (ev.status === 'failed') {
+                  this.toast(`❌ Fila ${ev.queue} — ${ev.jobName} falhou`, 'error');
+                  this.loadQueueStats();
+                } else if (ev.status === 'completed') {
+                  this.toast(`✅ ${ev.queue}/${ev.jobName} concluído`, 'ok');
+                  this.loadQueueStats();
+                }
+              } else {
+                const label = { product:'produto', customer:'cliente', order:'pedido', error:'erro' }[ev.type] ?? ev.type;
+                this.toast(`Novo ${label} — ${ev.data?.sku ?? ev.data?.email ?? ev.data?.shopify_order_id ?? ''}`, ev.type === 'error' ? 'error' : 'ok');
+                if (ev.type === this.activeTab) {
+                  this.page = 1;
+                  this.loadLogs();
+                }
+              }
+            } catch { /* ignore */ }
+          };
+        },
+
+        toast(message, type = 'ok') {
+          this.toasts.push({ message, type });
+          setTimeout(() => this.toasts.shift(), 5000);
+        },
+
+        formatCell(val) {
+          if (val === null || val === undefined) return '—';
+          if (typeof val === 'object') return JSON.stringify(val).slice(0, 80);
+          if (typeof val === 'string' && val.length > 24 && val.includes('T')) {
+            // ISO date
+            try { return new Date(val).toLocaleString('pt-BR'); } catch { return val; }
+          }
+          return String(val);
+        },
+
+        statusClass(val) {
+          if (val === 'success') return 'text-green-400 font-semibold';
+          if (val === 'error')   return 'text-red-400 font-semibold';
+          if (val === 'skipped') return 'text-yellow-400';
+          return '';
+        },
+
+        detailSections(row) {
+          if (!row) return [];
+          const fmt = v => (v !== undefined && v !== null) ? JSON.stringify(v, null, 2) : null;
+          const sections = [];
+          if (this.activeTab === 'product') {
+            if (row.before     != null) sections.push({ label: 'Antes (dados originais)',           json: fmt(row.before) });
+            if (row.after      != null) sections.push({ label: 'Depois (enviado ao Shopify)',       json: fmt(row.after) });
+            if (row.shopify_response != null) sections.push({ label: 'Resposta do Shopify',         json: fmt(row.shopify_response) });
+          } else if (this.activeTab === 'order') {
+            if (row.payload    != null) sections.push({ label: 'Dados enviados ao WooCommerce',     json: fmt(row.payload) });
+            if (row.response   != null) sections.push({ label: 'Resposta do WooCommerce',           json: fmt(row.response) });
+          } else if (this.activeTab === 'customer') {
+            if (row.payload    != null) sections.push({ label: 'Dados enviados ao WooCommerce',     json: fmt(row.payload) });
+            if (row.response   != null) sections.push({ label: 'Resposta do WooCommerce',           json: fmt(row.response) });
+          } else if (this.activeTab === 'error') {
+            if (row.payload    != null) sections.push({ label: 'Payload que causou o erro',         json: fmt(row.payload) });
+            if (row.stack      != null) sections.push({ label: 'Stack trace',                       json: typeof row.stack === 'string' ? row.stack : fmt(row.stack) });
+          }
+          return sections.filter(s => s.json !== null);
+        },
+
+        copyToClipboard(text) {
+          navigator.clipboard?.writeText(text).then(() => this.toast('Copiado!', 'ok'));
+        },
+      };
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+version: "3.9"
+
+# ── Uso ───────────────────────────────────────────────────────────────────────
+# Desenvolvimento: docker compose up
+# Produção:        docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# Segredos: copie .env.example → .env e preencha os valores reais.
+# A imagem da aplicação pode ser construída localmente (build:) ou puxada do
+# GitHub Container Registry (image: ghcr.io/<owner>/<repo>:<tag>)
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: integrador-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-300401}
+      --appendonly yes
+      --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - integrador-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-300401}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: integrador-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-integrador}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-300401}
+      MONGO_INITDB_DATABASE: integrador
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - integrador-net
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --username
+        - ${MONGO_ROOT_USER:-integrador}
+        - --password
+        - ${MONGO_ROOT_PASSWORD:-300401}
+        - --authenticationDatabase
+        - admin
+        - --eval
+        - "db.adminCommand('ping')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Aplicação ──────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: integrador-shopify-woo:local
+    container_name: integrador-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Substitui as URLs de localhost pelas dos containers
+      REDIS_URL: redis://:${REDIS_PASSWORD:-300401}@redis:6379/1
+      MONGODB_URL: mongodb://${MONGO_ROOT_USER:-integrador}:${MONGO_ROOT_PASSWORD:-300401}@mongodb:27017/integrador?authSource=admin
+      NODE_ENV: production
+    ports:
+      - "${PORT:-3005}:${PORT:-3005}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - integrador-net
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  integrador-net:
+    driver: bridge
+

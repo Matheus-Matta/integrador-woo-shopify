@@ -1,0 +1,145 @@
+name: CI — Lint, Build & Push Docker Image
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Job 1: lint + type-check ────────────────────────────────────────────────
+  lint:
+    name: TypeScript type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (tsc --noEmit)
+        run: npm run lint
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true   # avisa mas não bloqueia o build
+
+  # ── Job 2: build Docker image + push para GHCR ─────────────────────────────
+  build:
+    name: Build & Push Docker image
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags e labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build (e push em push para main/master)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 3: smoke-test com docker compose ────────────────────────────────────
+  integration:
+    name: Smoke-test (docker compose up)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cria .env mínimo para o compose subir sem segredos reais
+      - name: Criar .env de teste
+        run: |
+          cat > .env <<EOF
+          PORT=3005
+          TZ=America/Sao_Paulo
+          NODE_ENV=production
+          SKIP_HMAC=true
+          SHOPIFY_URL=https://placeholder.myshopify.com/admin/api/2024-01/graphql.json
+          SHOPIFY_ACCESS_TOKEN=placeholder
+          SHOPIFY_WEBHOOK_SECRET=placeholderplaceholderplaceholderplaceholderplaceholderplaceholder12
+          WOO_URL=https://placeholder.com
+          WOO_KEY=ck_placeholder
+          WOO_SECRET=cs_placeholder
+          WOO_WEBHOOK_SECRET=placeholderplaceholderplaceholder1
+          REDIS_URL=redis://:testpass@redis:6379/1
+          REDIS_PASSWORD=testpass
+          REDIS_CACHE_TTL_SECONDS=300
+          MONGODB_URL=mongodb://integrador:testpass@mongodb:27017/integrador?authSource=admin
+          MONGO_ROOT_USER=integrador
+          MONGO_ROOT_PASSWORD=testpass
+          QUEUE_ATTEMPTS=3
+          QUEUE_BACKOFF_DELAY_MS=5000
+          RATE_LIMIT_MAX=60
+          RATE_LIMIT_WINDOW_MS=60000
+          DASHBOARD_PASSWORD=testpass
+          DASHBOARD_JWT_SECRET=testsecretjwt64charslongtestsecretjwt64charslongtestsecretjwt64ch
+          DOMAIN=http://localhost:3005
+          LOG_LEVEL=info
+          EOF
+
+      - name: Substituir imagem no compose para usar a recém-publicada
+        run: |
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(git rev-parse --short HEAD)"
+          sed -i "s|image: integrador-shopify-woo:local|image: ${IMAGE_TAG}|g" docker-compose.yml
+
+      - name: Subir serviços
+        run: docker compose up -d --wait
+        timeout-minutes: 3
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl --fail --retry 5 --retry-delay 3 http://localhost:3005/health
+
+      - name: Parar serviços
+        if: always()
+        run: docker compose down -v
