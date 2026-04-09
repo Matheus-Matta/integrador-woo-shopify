@@ -10,7 +10,7 @@ const logProductSchema = new Schema({
   after:             { type: Schema.Types.Mixed },
   shopify_response:  { type: Schema.Types.Mixed },
   status:            { type: String, enum: ['success', 'error', 'skipped'], default: 'success' },
-  timestamp:         { type: Date, default: Date.now, index: true },
+  timestamp:         { type: Date, default: Date.now, expires: '30d' },
 });
 
 const logCustomerSchema = new Schema({
@@ -22,7 +22,7 @@ const logCustomerSchema = new Schema({
   payload:            { type: Schema.Types.Mixed },
   response:           { type: Schema.Types.Mixed },
   status:             { type: String, enum: ['success', 'error', 'skipped'], default: 'success' },
-  timestamp:          { type: Date, default: Date.now, index: true },
+  timestamp:          { type: Date, default: Date.now, expires: '30d' },
 });
 
 const logOrderSchema = new Schema({
@@ -34,7 +34,7 @@ const logOrderSchema = new Schema({
   payload:           { type: Schema.Types.Mixed },
   response:          { type: Schema.Types.Mixed },
   status:            { type: String, enum: ['success', 'error', 'skipped'], default: 'success' },
-  timestamp:         { type: Date, default: Date.now, index: true },
+  timestamp:         { type: Date, default: Date.now, expires: '30d' },
 });
 
 const logErrorSchema = new Schema({
@@ -42,7 +42,7 @@ const logErrorSchema = new Schema({
   error_message: { type: String },
   stack:     { type: String },
   payload:   { type: Schema.Types.Mixed },
-  timestamp: { type: Date, default: Date.now, index: true },
+  timestamp: { type: Date, default: Date.now, expires: '30d' },
 });
 
 // ─── Models ────────────────────────────────────────────────────────────────
