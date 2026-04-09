@@ -14,7 +14,7 @@
 import { redis } from '../db/redis';
 
 const DELIVERY_TTL = 60 * 60 * 24; // 24 h — cobre qualquer retry da Shopify
-const ORDER_TTL    = 30;            // 30 s — janela boleto create+paid
+const ORDER_TTL    = 60 * 10;      // 10 min — cobre janela create→paid do cartão/boleto
 
 /**
  * Tenta marcar o delivery-id como processado.

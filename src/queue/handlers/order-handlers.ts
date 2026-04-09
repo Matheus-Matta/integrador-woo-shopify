@@ -91,7 +91,7 @@ export async function handleShopCustomerCreate(order: Record<string, unknown>): 
   };
 
   const created = await createCustomer('starchats', payload);
-  await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', payload, response: created, status: 'success' });
+  await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', webhook: order, payload, response: created, status: 'success' });
 }
 
 // ─── shop-customer-update ──────────────────────────────────────────────────
@@ -107,7 +107,7 @@ export async function handleShopCustomerUpdate(order: Record<string, unknown>): 
 
   const existing = await getCustomerByEmail('starchats', email);
   if (!existing) {
-    await logCustomer({ email, woo_instance: 'starchats', action: 'update_skipped_not_found', status: 'skipped' as never });
+    await logCustomer({ email, woo_instance: 'starchats', action: 'update_skipped_not_found', webhook: order, status: 'skipped' as never });
     return;
   }
 
@@ -150,7 +150,7 @@ export async function handleShopCustomerUpdate(order: Record<string, unknown>): 
   };
 
   const updated = await updateCustomer('starchats', existing.id, payload);
-  await logCustomer({ email, woo_customer_id: updated.id, woo_instance: 'starchats', action: 'update', payload, response: updated, status: 'success' });
+  await logCustomer({ email, woo_customer_id: updated.id, woo_instance: 'starchats', action: 'update', webhook: order, payload, response: updated, status: 'success' });
 }
 
 // ─── shop-order-create ─────────────────────────────────────────────────────
@@ -160,6 +160,20 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   const shopifyOrderId = String(order?.id ?? '');
 
   if (!email || !shopifyOrderId) throw new Error('email e id do pedido são obrigatórios');
+
+  // ── Idempotência: verifica se o pedido já existe no Woo ───────────────────
+  // Garante que dois webhooks orders/create (pending + paid) não criem dois
+  // pedidos. Usa busca por email para obter o customerId sem depender de cache.
+  const existingCustomerForCheck = await getCustomerByEmail('starseguro', email);
+  if (existingCustomerForCheck) {
+    const existingOrder = await findWooOrderByShopifyId('starseguro', existingCustomerForCheck.id, shopifyOrderId);
+    if (existingOrder) {
+      // Pedido já existe — encerra com sucesso sem criar duplicata.
+      console.log(`[shop-order-create] Pedido Shopify ${shopifyOrderId} já existe no Woo (id=${existingOrder.id}) — ignorando criação duplicada`);
+      await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: existingOrder.id, woo_instance: 'starseguro', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
+      return; // encerra sem erro — não vai para retentativa
+    }
+  }
 
   let wooCustomer = await getCustomerByEmail('starchats', email);
 
@@ -200,7 +214,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
 
     try {
       const created = await createCustomer('starchats', customerPayload);
-      await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', payload: customerPayload, response: created, status: 'success' });
+      await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', webhook: order, payload: customerPayload, response: created, status: 'success' });
     } catch (customerErr: unknown) {
       const axErr = customerErr instanceof AxiosError ? customerErr : null;
       const wooMsg = JSON.stringify(axErr?.response?.data ?? '').toLowerCase();
@@ -266,7 +280,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   };
 
   const created = await createOrder('starseguro', payload);
-  await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: created.id, woo_instance: 'starseguro', action: 'create', payload, response: created, status: 'success' });
+  await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: created.id, woo_instance: 'starseguro', action: 'create', webhook: order, payload, response: created, status: 'success' });
 }
 
 // ─── Helpers para shop-order-update ───────────────────────────────────────
@@ -304,27 +318,37 @@ function buildOrderPayload(
     { key: 'delivery_type', value: deliveryType },
   ].filter((item) => s(item.value) !== '');
 
+  // Só sobrescreve billing/shipping se o webhook trouxer endereço preenchido.
+  // Webhooks orders/updated do Shopify às vezes omitem billing_address/shipping_address,
+  // o que zeraria os dados já salvos no WooCommerce.
+  const isBillingPresent = Boolean(s(bill?.first_name) || s(bill?.address1));
+  const isShippingPresent = Boolean(s(ship?.first_name) || s(ship?.address1));
+
   return {
     status: mapStatus(order),
     currency: s(order?.currency ?? order?.presentment_currency ?? 'BRL'),
     payment_method, payment_method_title,
     transaction_id: shopifyOrderId,
     customer_id: customerId,
-    billing: {
-      first_name: s(bill?.first_name), last_name: s(bill?.last_name),
-      company: s(bill?.company), address_1: s(bill?.address1), address_2: s(bill?.address2),
-      city: s(bill?.city), state: s(bill?.province_code), postcode: s(bill?.zip),
-      country: s(bill?.country_code), email, phone: s(bill?.phone ?? order?.phone),
-      persontype: '1', cpf: cpfFinal, number: billingNumber, neighborhood: billingNeighborhood,
-    },
-    shipping: {
-      first_name: s(ship?.first_name ?? bill?.first_name), last_name: s(ship?.last_name ?? bill?.last_name),
-      company: s(ship?.company),
-      address_1: s(ship?.address1 ?? bill?.address1), address_2: s(ship?.address2 ?? bill?.address2),
-      city: s(ship?.city ?? bill?.city), state: s(ship?.province_code ?? bill?.province_code),
-      postcode: s(ship?.zip ?? bill?.zip), country: s(ship?.country_code ?? bill?.country_code),
-      number: shippingNumber, neighborhood: shippingNeighborhood,
-    },
+    ...(isBillingPresent ? {
+      billing: {
+        first_name: s(bill?.first_name), last_name: s(bill?.last_name),
+        company: s(bill?.company), address_1: s(bill?.address1), address_2: s(bill?.address2),
+        city: s(bill?.city), state: s(bill?.province_code), postcode: s(bill?.zip),
+        country: s(bill?.country_code), email, phone: s(bill?.phone ?? order?.phone),
+        persontype: '1', cpf: cpfFinal, number: billingNumber, neighborhood: billingNeighborhood,
+      },
+    } : {}),
+    ...(isShippingPresent ? {
+      shipping: {
+        first_name: s(ship?.first_name ?? bill?.first_name), last_name: s(ship?.last_name ?? bill?.last_name),
+        company: s(ship?.company),
+        address_1: s(ship?.address1 ?? bill?.address1), address_2: s(ship?.address2 ?? bill?.address2),
+        city: s(ship?.city ?? bill?.city), state: s(ship?.province_code ?? bill?.province_code),
+        postcode: s(ship?.zip ?? bill?.zip), country: s(ship?.country_code ?? bill?.country_code),
+        number: shippingNumber, neighborhood: shippingNeighborhood,
+      },
+    } : {}),
     line_items: existingLineItems && existingLineItems.length > 0
       ? mergeLineItems(order, existingLineItems)
       : buildLineItems(order),
@@ -387,7 +411,7 @@ export async function handleShopOrderUpdate(order: Record<string, unknown>): Pro
 
     try {
       const created = await createCustomer('starchats', customerPayload);
-      await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', payload: customerPayload, response: created, status: 'success' });
+      await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', webhook: order, payload: customerPayload, response: created, status: 'success' });
     } catch (customerErr: unknown) {
       // Extrai mensagem real do WooCommerce (Axios encapsula o body)
       const axErr = customerErr instanceof AxiosError ? customerErr : null;
@@ -423,11 +447,11 @@ export async function handleShopOrderUpdate(order: Record<string, unknown>): Pro
       existingOrder.line_items,
     );
     const updated = await updateOrder('starchats', existingOrder.id, payload);
-    await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: updated.id, woo_instance: 'starchats', action: 'update', payload, response: updated, status: 'success' });
+    await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: updated.id, woo_instance: 'starchats', action: 'update', webhook: order, payload, response: updated, status: 'success' });
   } else {
-    const payload = buildOrderPayload(order, shopifyOrderId, email, wooCustomer.id, cpfFinal);
-    const created = await createOrder('starchats', payload);
-    await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: created.id, woo_instance: 'starchats', action: 'create', payload, response: created, status: 'success' });
+    // Pedido ainda não existe no Woo — provavelmente o orders/create ainda não processou.
+    // Lança erro para que o job vá para o FIM da fila e tente novamente após os demais jobs.
+    throw new Error(`[shop-order-update] Pedido Shopify ${shopifyOrderId} não encontrado no Woo — será retentado`);
   }
 }
 
@@ -443,7 +467,7 @@ export async function handleWooOrderUpdate(body: Record<string, unknown>): Promi
   if (!shopifyOrderId) throw new Error('Nenhum _shopify_order_id ou transaction_id encontrado');
 
   if (wooStatus !== 'completed') {
-    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: Number(body?.id), action: 'update_skipped_not_completed', payload: { wooStatus }, status: 'skipped' });
+    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: Number(body?.id), action: 'update_skipped_not_completed', webhook: body, payload: { wooStatus }, status: 'skipped' });
     return;
   }
 
@@ -462,17 +486,17 @@ export async function handleWooOrderUpdate(body: Record<string, unknown>): Promi
 
   if (isCOD && shopifyOrder.canMarkAsPaid) {
     const paidRes = await markOrderAsPaid(shopifyOrderGid);
-    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, action: 'mark_paid', response: paidRes, status: 'success' });
+    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, action: 'mark_paid', webhook: body, response: paidRes, status: 'success' });
   }
 
   if (deliveryType !== 'pickup' && fulfillmentOrderId) {
     const fulfRes = await createFulfillment(fulfillmentOrderId);
     const fulfillmentId = fulfRes?.data?.fulfillmentCreate?.fulfillment?.id;
-    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, action: 'create_fulfillment', payload: { fulfillmentOrderId, deliveryDate }, response: fulfRes, status: 'success' });
+    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, action: 'create_fulfillment', webhook: body, payload: { fulfillmentOrderId, deliveryDate }, response: fulfRes, status: 'success' });
 
     if (fulfillmentId) {
       const deliveredRes = await markFulfillmentDelivered(fulfillmentId);
-      await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, action: 'mark_delivered', response: deliveredRes, status: 'success' });
+      await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, action: 'mark_delivered', webhook: body, response: deliveredRes, status: 'success' });
     }
   }
 }

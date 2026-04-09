@@ -19,6 +19,7 @@ const logCustomerSchema = new Schema({
   woo_customer_id:    { type: Number, index: true },
   woo_instance:       { type: String },                      // starchats | starseguro
   action:             { type: String, required: true },      // create | update
+  webhook:            { type: Schema.Types.Mixed },          // dados brutos recebidos via webhook
   payload:            { type: Schema.Types.Mixed },
   response:           { type: Schema.Types.Mixed },
   status:             { type: String, enum: ['success', 'error', 'skipped'], default: 'success' },
@@ -31,6 +32,7 @@ const logOrderSchema = new Schema({
   woo_order_id:      { type: Number, index: true },
   woo_instance:      { type: String },
   action:            { type: String, required: true },       // create | update | mark_paid | fulfillment | delivered
+  webhook:           { type: Schema.Types.Mixed },           // dados brutos recebidos via webhook
   payload:           { type: Schema.Types.Mixed },
   response:          { type: Schema.Types.Mixed },
   status:            { type: String, enum: ['success', 'error', 'skipped'], default: 'success' },

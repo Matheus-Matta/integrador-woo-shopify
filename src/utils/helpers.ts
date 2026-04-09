@@ -152,7 +152,7 @@ export function getPaymentData(order: Record<string, unknown>): {
   payment_method_title: string;
 } {
   const rawGateway = s(
-    (arrayOf<string>(order?.payment_gateway_names)[0]) ?? 'manual',
+    arrayOf<string>(order?.payment_gateway_names)[0] ?? order?.gateway ?? 'manual',
   );
   const gatewayLower = lower(rawGateway);
   const payment_method = gatewayLower.startsWith('appmax_')
@@ -400,7 +400,7 @@ export function buildShippingLines(
           id: wooLine.id,
           method_id: 'maxxxmoveis',
           method_title: s(wooLine.method_title ?? 'Frete (R$ 0.00)'),
-          total: '0.00',
+          total: money(wooLine.total ?? '0'),
           total_tax: '0.00',
           taxes: [],
         });

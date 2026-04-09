@@ -36,6 +36,7 @@ export async function logCustomer(data: {
   woo_customer_id?: number;
   woo_instance?: string;
   action: string;
+  webhook?: unknown;
   payload?: unknown;
   response?: unknown;
   status?: 'success' | 'error' | 'skipped';
@@ -56,6 +57,7 @@ export async function logOrder(data: {
   woo_order_id?: number;
   woo_instance?: string;
   action: string;
+  webhook?: unknown;
   payload?: unknown;
   response?: unknown;
   status?: 'success' | 'error' | 'skipped';

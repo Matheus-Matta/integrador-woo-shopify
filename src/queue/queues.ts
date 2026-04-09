@@ -16,11 +16,9 @@ function redisConnectionFromUrl(url: string) {
 const connection = redisConnectionFromUrl(config.redis.url);
 
 const defaultJobOptions = {
-  attempts: config.queue.attempts,
-  backoff: {
-    type: 'exponential' as const,
-    delay: config.queue.backoffDelay,
-  },
+  // Retentativas controladas manualmente no worker (job falho vai para o FIM da fila).
+  // attempts=1 impede o BullMQ de retentar automaticamente com backoff.
+  attempts: 1,
   removeOnComplete: { count: 500 },
   removeOnFail: { count: 1000, age: 60 * 60 * 24 * 7 }, // mantém até 1 000 falhas por até 7 dias
 };

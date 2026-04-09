@@ -338,8 +338,7 @@
       order: [
         { label: 'Data',      get: r => fmtDate(r.timestamp) },
         { label: 'Pedido',    get: r => r.shopify_order_name ?? (r.shopify_order_id ? '#' + r.shopify_order_id : '—') },
-        { label: 'Cliente',   get: r => { const b = r.payload?.billing ?? {}; return [b.first_name, b.last_name].filter(Boolean).join(' ') || '—'; } },
-        { label: 'Email',     get: r => r.payload?.billing?.email ?? r.payload?.contact_email ?? '—' },
+        { label: 'Cliente',   get: r => { const b = r.payload?.billing ?? r.webhook?.billing_address ?? {}; return [b.first_name, b.last_name].filter(Boolean).join(' ') || '—'; } },
         { label: 'Pagamento', get: r => r.payload?.payment_method_title ?? '—' },
         { label: 'Ação',      get: r => r.action ?? '—' },
         { label: 'Status',    get: r => r.status ?? '—', cls: r => statusCls(r.status) },
@@ -563,9 +562,13 @@
             if (row.after      != null) sections.push({ label: 'Depois (enviado ao Shopify)',       json: fmt(row.after) });
             if (row.shopify_response != null) sections.push({ label: 'Resposta do Shopify',         json: fmt(row.shopify_response) });
           } else if (this.activeTab === 'order') {
+            const webhookFallback = { note: 'Nenhum dado de webhook disponível para este evento' };
+            sections.push({ label: 'Dados do Webhook (entrada)',           json: fmt(row.webhook ?? webhookFallback) });
             if (row.payload    != null) sections.push({ label: 'Dados enviados ao WooCommerce',     json: fmt(row.payload) });
             if (row.response   != null) sections.push({ label: 'Resposta do WooCommerce',           json: fmt(row.response) });
           } else if (this.activeTab === 'customer') {
+            const webhookFallback = { note: 'Nenhum dado de webhook disponível para este evento' };
+            sections.push({ label: 'Dados do Webhook (entrada)',           json: fmt(row.webhook ?? webhookFallback) });
             if (row.payload    != null) sections.push({ label: 'Dados enviados ao WooCommerce',     json: fmt(row.payload) });
             if (row.response   != null) sections.push({ label: 'Resposta do WooCommerce',           json: fmt(row.response) });
           } else if (this.activeTab === 'error') {
