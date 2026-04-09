@@ -83,30 +83,31 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-gray-700 text-gray-400 text-left">
-              <template x-for="col in columns" :key="col">
-                <th class="px-4 py-3 font-medium" x-text="col"></th>
+              <template x-for="col in cols" :key="col.label">
+                <th class="px-4 py-3 font-medium whitespace-nowrap" x-text="col.label"></th>
               </template>
             </tr>
           </thead>
           <tbody>
             <template x-if="loading">
               <tr>
-                <td :colspan="columns.length" class="text-center py-10 text-gray-500">Carregando...</td>
+                <td :colspan="cols.length" class="text-center py-10 text-gray-500">Carregando...</td>
               </tr>
             </template>
             <template x-if="!loading && rows.length === 0">
               <tr>
-                <td :colspan="columns.length" class="text-center py-10 text-gray-500">Nenhum registro</td>
+                <td :colspan="cols.length" class="text-center py-10 text-gray-500">Nenhum registro</td>
               </tr>
             </template>
             <template x-for="(row, idx) in rows" :key="idx">
-              <tr class="border-b border-gray-700 hover:bg-gray-750 transition cursor-pointer" @click="selectedRow = row" title="Clique para ver detalhes">
-                <template x-for="col in rawKeys" :key="col">
-                  <td class="px-4 py-2 max-w-xs truncate">
+              <tr class="border-b border-gray-700 hover:bg-gray-700/50 transition cursor-pointer" @click="selectedRow = row" title="Clique para ver detalhes">
+                <template x-for="col in cols" :key="col.label">
+                  <td class="px-4 py-2.5 max-w-xs">
                     <span
-                      x-text="formatCell(row[col])"
-                      :title="JSON.stringify(row[col])"
-                      :class="col === 'status' ? statusClass(row[col]) : ''"
+                      x-text="cellValue(row, col)"
+                      :class="cellCls(row, col)"
+                      :title="cellFull(row, col)"
+                      class="block truncate"
                     ></span>
                   </td>
                 </template>
@@ -312,11 +313,63 @@
   </div>
 
   <script>
+    /* ── Utilitários globais ───────────────────────────────────────────── */
+    function fmtDate(val) {
+      if (!val) return '—';
+      try {
+        const d = new Date(val);
+        const p = n => String(n).padStart(2, '0');
+        return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+      } catch { return String(val); }
+    }
+    function statusCls(v) {
+      if (v === 'success') return 'text-green-400 font-semibold';
+      if (v === 'error')   return 'text-red-400 font-semibold';
+      if (v === 'skipped') return 'text-yellow-400';
+      return '';
+    }
+    function fmtMoney(v) {
+      if (v == null || v === '') return '—';
+      return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    }
+
+    /* ── Definição de colunas por aba ─────────────────────────────────── */
     const COLS_MAP = {
-      product:  { display: ['Data','SKU','Ação','Status'], keys: ['timestamp','sku','action','status'] },
-      customer: { display: ['Data','Email','ID Woo','Ação','Status'], keys: ['timestamp','email','woo_customer_id','action','status'] },
-      order:    { display: ['Data','ID Shopify','ID Woo','Ação','Status'], keys: ['timestamp','shopify_order_id','woo_order_id','action','status'] },
-      error:    { display: ['Data','Flow','Erro','Payload'], keys: ['timestamp','flow','error_message','payload'] },
+      order: [
+        { label: 'Data',      get: r => fmtDate(r.timestamp) },
+        { label: 'Pedido',    get: r => r.shopify_order_name ?? (r.shopify_order_id ? '#' + r.shopify_order_id : '—') },
+        { label: 'Cliente',   get: r => { const b = r.payload?.billing ?? {}; return [b.first_name, b.last_name].filter(Boolean).join(' ') || '—'; } },
+        { label: 'Email',     get: r => r.payload?.billing?.email ?? r.payload?.contact_email ?? '—' },
+        { label: 'Pagamento', get: r => r.payload?.payment_method_title ?? '—' },
+        { label: 'Ação',      get: r => r.action ?? '—' },
+        { label: 'Status',    get: r => r.status ?? '—', cls: r => statusCls(r.status) },
+      ],
+      customer: [
+        { label: 'Data',   get: r => fmtDate(r.timestamp) },
+        { label: 'Nome',   get: r => { const p = r.payload ?? {}; return [p.first_name, p.last_name].filter(Boolean).join(' ') || '—'; } },
+        { label: 'Email',  get: r => r.email ?? r.payload?.email ?? '—' },
+        { label: 'Ação',   get: r => r.action ?? '—' },
+        { label: 'Status', get: r => r.status ?? '—', cls: r => statusCls(r.status) },
+      ],
+      product: [
+        { label: 'Data',    get: r => fmtDate(r.timestamp) },
+        { label: 'SKU',     get: r => r.sku ?? '—' },
+        { label: 'Nome',    get: r => r.after?.name ?? r.before?.name ?? '—' },
+        { label: 'Detalhe', get: r => {
+          if (r.action === 'stock_update') return `Estoque: ${r.before?.quantity ?? '?'} → ${r.after?.quantity ?? '?'}` + (r.after?.delta != null ? ` (${r.after.delta > 0 ? '+' : ''}${r.after.delta})` : '');
+          if (r.action === 'price_update') return 'Preço: ' + fmtMoney(r.after?.price) + (r.after?.compareAtPrice ? ' / De: ' + fmtMoney(r.after.compareAtPrice) : '');
+          if (r.action === 'title_update') return r.after?.name ?? '—';
+          return '—';
+        }},
+        { label: 'Ação',    get: r => r.action ?? '—' },
+        { label: 'Status',  get: r => r.status ?? '—', cls: r => statusCls(r.status) },
+      ],
+      error: [
+        { label: 'Data',  get: r => fmtDate(r.timestamp) },
+        { label: 'Flow',  get: r => r.flow ?? '—' },
+        { label: 'Erro',  get: r => r.error_message ?? '—' },
+        { label: 'Status', get: _r => 'erro', cls: () => 'text-red-400 font-semibold' },
+      ],
     };
 
     function dashboard() {
@@ -346,8 +399,7 @@
         webhookError: '',
         selectedRow: null,
 
-        get columns()  { return COLS_MAP[this.activeTab]?.display ?? []; },
-        get rawKeys()  { return COLS_MAP[this.activeTab]?.keys   ?? []; },
+        get cols() { return COLS_MAP[this.activeTab] ?? []; },
 
         async init() {
           await this.loadLogs();
@@ -489,21 +541,17 @@
           setTimeout(() => this.toasts.shift(), 5000);
         },
 
-        formatCell(val) {
-          if (val === null || val === undefined) return '—';
-          if (typeof val === 'object') return JSON.stringify(val).slice(0, 80);
-          if (typeof val === 'string' && val.length > 24 && val.includes('T')) {
-            // ISO date
-            try { return new Date(val).toLocaleString('pt-BR'); } catch { return val; }
-          }
-          return String(val);
+        cellValue(row, col) {
+          try { const v = col.get(row); return v ?? '—'; } catch { return '—'; }
         },
-
+        cellCls(row, col) {
+          try { return col.cls ? col.cls(row) : ''; } catch { return ''; }
+        },
+        cellFull(row, col) {
+          try { return String(col.get(row) ?? ''); } catch { return ''; }
+        },
         statusClass(val) {
-          if (val === 'success') return 'text-green-400 font-semibold';
-          if (val === 'error')   return 'text-red-400 font-semibold';
-          if (val === 'skipped') return 'text-yellow-400';
-          return '';
+          return statusCls(val);
         },
 
         detailSections(row) {
