@@ -131,7 +131,9 @@ export function getDeliveryTypeFromShopify(order: Record<string, unknown>): stri
 
 export function isCashOnDelivery(order: Record<string, unknown>): boolean {
   const gateways = arrayOf<string>(order?.payment_gateway_names).map(lower);
-  return gateways.some((g) => g.includes('cash on delivery') || g === 'cod');
+  return gateways.some(
+    (g) => g.includes('cash on delivery') || g === 'cod' || g.includes('pagamento na entrega'),
+  );
 }
 
 export function mapStatus(order: Record<string, unknown>): string {

@@ -24,6 +24,10 @@ services:
       - redis_data:/data
     networks:
       - integrador-net
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-300401}", "ping"]
       interval: 10s
@@ -45,6 +49,10 @@ services:
       - mongo_data:/data/db
     networks:
       - integrador-net
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     healthcheck:
       test:
         - CMD
@@ -63,10 +71,7 @@ services:
 
   # ── Aplicação ──────────────────────────────────────────────────────────────
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: integrador-shopify-woo:local
+    image: ghcr.io/matheus-matta/integrador-woo-shopify:${APP_TAG:-latest}
     container_name: integrador-app
     restart: unless-stopped
     env_file: .env
@@ -77,6 +82,10 @@ services:
       NODE_ENV: production
     ports:
       - "${PORT:-3005}:${PORT:-3005}"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     depends_on:
       redis:
         condition: service_healthy
