@@ -153,8 +153,13 @@ export function getPaymentData(order: Record<string, unknown>): {
   payment_method: string;
   payment_method_title: string;
 } {
+  // A Shopify acrescenta novos gateways ao FINAL de `payment_gateway_names`
+  // quando o cliente troca a forma de pagamento (ex.: cartão recusado → boleto/PIX).
+  // O último item é sempre o método mais recente. `gateway` é usado como fallback
+  // para pedidos onde o array não esteja presente.
+  const names = arrayOf<string>(order?.payment_gateway_names);
   const rawGateway = s(
-    arrayOf<string>(order?.payment_gateway_names)[0] ?? order?.gateway ?? 'manual',
+    names[names.length - 1] ?? order?.gateway ?? 'manual',
   );
   const gatewayLower = lower(rawGateway);
   const payment_method = gatewayLower.startsWith('appmax_')

@@ -45,7 +45,7 @@
     <div class="flex gap-2 flex-wrap">
       <template x-for="tab in tabs" :key="tab.key">
         <button
-          @click="activeTab = tab.key; activeTab !== 'queues' && loadLogs()"
+          @click="activeTab = tab.key; search = ''; filterStatus = ''; filterAction = ''; filterFrom = ''; filterTo = ''; page = 1; activeTab !== 'queues' && activeTab !== 'webhooks' && loadLogs()"
           :class="activeTab === tab.key ? 'active' : ''"
           class="tab-btn"
           x-text="tab.label"
@@ -54,12 +54,88 @@
     </div>
 
     <!-- Painel Logs (produto / cliente / pedido / erro) -->
-    <div x-show="activeTab !== 'queues'">
+    <div x-show="activeTab !== 'queues' && activeTab !== 'webhooks'">
 
-      <!-- Controles -->
+      <!-- Barra de filtros -->
+      <div class="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-4 space-y-3">
+        <div class="flex flex-wrap gap-3">
+          <!-- Busca textual -->
+          <div class="flex-1 min-w-48">
+            <input
+              type="text"
+              x-model="search"
+              @keydown.enter="page = 1; loadLogs()"
+              :placeholder="searchPlaceholder"
+              class="w-full bg-gray-700 border border-gray-600 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500"
+            />
+          </div>
+          <!-- Status -->
+          <template x-if="activeTab !== 'error'">
+            <select
+              x-model="filterStatus"
+              @change="page = 1; loadLogs()"
+              class="bg-gray-700 border border-gray-600 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Todos os status</option>
+              <option value="success">✅ Sucesso</option>
+              <option value="error">❌ Erro</option>
+              <option value="skipped">⏭ Ignorado</option>
+            </select>
+          </template>
+          <!-- Ação -->
+          <template x-if="actionOptions.length > 0">
+            <select
+              x-model="filterAction"
+              @change="page = 1; loadLogs()"
+              class="bg-gray-700 border border-gray-600 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Todas as ações</option>
+              <template x-for="a in actionOptions" :key="a">
+                <option :value="a" x-text="a"></option>
+              </template>
+            </select>
+          </template>
+        </div>
+        <div class="flex flex-wrap gap-3 items-end">
+          <!-- Data início -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-gray-400">De</label>
+            <input
+              type="date"
+              x-model="filterFrom"
+              @change="page = 1; loadLogs()"
+              class="bg-gray-700 border border-gray-600 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <!-- Data fim -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-gray-400">Até</label>
+            <input
+              type="date"
+              x-model="filterTo"
+              @change="page = 1; loadLogs()"
+              class="bg-gray-700 border border-gray-600 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div class="flex gap-2 ml-auto items-end">
+            <button
+              @click="page = 1; loadLogs()"
+              class="bg-indigo-600 hover:bg-indigo-700 text-sm px-4 py-1.5 rounded-lg transition font-medium"
+            >🔍 Filtrar</button>
+            <button
+              x-show="hasActiveFilters"
+              @click="clearFilters()"
+              class="bg-gray-600 hover:bg-gray-500 text-sm px-3 py-1.5 rounded-lg transition"
+            >✕ Limpar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controles de paginação / totais -->
       <div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
         <div class="text-sm text-gray-400">
           Total: <span x-text="total"></span> registros
+          <span x-show="hasActiveFilters" class="ml-2 text-xs text-indigo-400 font-medium">(filtrado)</span>
         </div>
         <div class="flex gap-2 items-center">
           <select
@@ -371,6 +447,20 @@
       ],
     };
 
+    const ACTION_OPTIONS = {
+      order:    ['create', 'update', 'mark_paid', 'create_fulfillment', 'mark_delivered', 'update_skipped_not_completed'],
+      customer: ['create', 'update'],
+      product:  ['stock_update', 'price_update', 'title_update'],
+      error:    [],
+    };
+
+    const SEARCH_PLACEHOLDER = {
+      order:    'Buscar por nº do pedido (#1101)...',
+      customer: 'Buscar por e-mail...',
+      product:  'Buscar por SKU...',
+      error:    'Buscar por flow ou mensagem de erro...',
+    };
+
     function dashboard() {
       return {
         tabs: [
@@ -388,6 +478,12 @@
         page: 1,
         limit: 50,
         loading: false,
+        // Filtros
+        search: '',
+        filterStatus: '',
+        filterAction: '',
+        filterFrom: '',
+        filterTo: '',
         queueStats: {},
         toasts: [],
         wsConnected: false,
@@ -399,6 +495,11 @@
         selectedRow: null,
 
         get cols() { return COLS_MAP[this.activeTab] ?? []; },
+        get actionOptions() { return ACTION_OPTIONS[this.activeTab] ?? []; },
+        get searchPlaceholder() { return SEARCH_PLACEHOLDER[this.activeTab] ?? 'Buscar...'; },
+        get hasActiveFilters() {
+          return !!(this.search || this.filterStatus || this.filterAction || this.filterFrom || this.filterTo);
+        },
 
         async init() {
           await this.loadLogs();
@@ -411,14 +512,31 @@
           this.connectWs();
         },
 
+        clearFilters() {
+          this.search = '';
+          this.filterStatus = '';
+          this.filterAction = '';
+          this.filterFrom = '';
+          this.filterTo = '';
+          this.page = 1;
+          this.loadLogs();
+        },
+
         async loadLogs() {
-          if (this.activeTab === 'queues') return;
+          if (this.activeTab === 'queues' || this.activeTab === 'webhooks') return;
           this.loading = true;
           try {
-            const res = await fetch(
-              `/dashboard/api/logs?type=${this.activeTab}&page=${this.page}&limit=${this.limit}`,
-              { credentials: 'include' }
-            );
+            const params = new URLSearchParams({
+              type:  this.activeTab,
+              page:  String(this.page),
+              limit: String(this.limit),
+            });
+            if (this.search)        params.set('search', this.search);
+            if (this.filterStatus)  params.set('status', this.filterStatus);
+            if (this.filterAction)  params.set('action', this.filterAction);
+            if (this.filterFrom)    params.set('from',   this.filterFrom);
+            if (this.filterTo)      params.set('to',     this.filterTo);
+            const res = await fetch(`/dashboard/api/logs?${params}`, { credentials: 'include' });
             if (res.status === 401) { window.location.href = '/dashboard/login'; return; }
             const json = await res.json();
             this.rows  = json.data  ?? [];

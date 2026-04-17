@@ -1,6 +1,6 @@
 {
   "name": "integrador-shopify-woo",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Integrador Shopify <-> WooCommerce via webhooks",
   "main": "dist/index.js",
   "scripts": {

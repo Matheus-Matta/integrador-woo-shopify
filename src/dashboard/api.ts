@@ -16,6 +16,11 @@ type LogsQuery = {
   type?: 'product' | 'customer' | 'order' | 'error';
   page?: string;
   limit?: string;
+  search?: string;
+  status?: string;
+  action?: string;
+  from?: string;
+  to?: string;
 };
 
 const MODEL_MAP: Record<string, Model<unknown>> = {
@@ -25,10 +30,58 @@ const MODEL_MAP: Record<string, Model<unknown>> = {
   error: LogErrorModel as Model<unknown>,
 } as const;
 
+/** Escapa caracteres especiais de regex para evitar ReDoS. */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Constrói o filtro MongoDB a partir dos parâmetros da query. */
+function buildFilter(type: string, query: LogsQuery): Record<string, unknown> {
+  const filter: Record<string, unknown> = {};
+
+  // Filtro de status (não se aplica à aba de erros — todos já são erros)
+  if (query.status && type !== 'error' && ['success', 'error', 'skipped'].includes(query.status)) {
+    filter.status = query.status;
+  }
+
+  // Filtro de ação
+  if (query.action) {
+    filter.action = query.action;
+  }
+
+  // Filtro de intervalo de datas
+  if (query.from || query.to) {
+    const dateFilter: Record<string, Date> = {};
+    if (query.from) { const d = new Date(query.from); if (!isNaN(d.getTime())) dateFilter.$gte = d; }
+    if (query.to)   { const d = new Date(query.to);   if (!isNaN(d.getTime())) { d.setHours(23, 59, 59, 999); dateFilter.$lte = d; } }
+    if (Object.keys(dateFilter).length) filter.timestamp = dateFilter;
+  }
+
+  // Busca textual por campos relevantes por tipo
+  if (query.search) {
+    const regex = new RegExp(escapeRegex(query.search), 'i');
+    if (type === 'order') {
+      filter.$or = [
+        { shopify_order_id: regex },
+        { shopify_order_name: regex },
+      ];
+    } else if (type === 'customer') {
+      filter.$or = [{ email: regex }];
+    } else if (type === 'product') {
+      filter.$or = [{ sku: regex }];
+    } else if (type === 'error') {
+      filter.$or = [{ flow: regex }, { error_message: regex }];
+    }
+  }
+
+  return filter;
+}
+
 export async function dashboardApiRoutes(app: FastifyInstance): Promise<void> {
   /**
    * GET /dashboard/api/logs
    * Query: type=product|customer|order|error  page=1  limit=50
+   *        search=  status=success|error|skipped  action=  from=YYYY-MM-DD  to=YYYY-MM-DD
    */
   app.get<{ Querystring: LogsQuery }>(
     '/dashboard/api/logs',
@@ -41,9 +94,11 @@ export async function dashboardApiRoutes(app: FastifyInstance): Promise<void> {
       const Model = MODEL_MAP[type];
       if (!Model) return reply.status(400).send({ error: 'Tipo inválido' });
 
+      const filter = buildFilter(type, request.query);
+
       const [docs, total] = await Promise.all([
-        Model.find({}).sort({ timestamp: -1 }).skip(skip).limit(limit).lean(),
-        Model.countDocuments({}),
+        Model.find(filter).sort({ timestamp: -1 }).skip(skip).limit(limit).lean(),
+        Model.countDocuments(filter),
       ]);
 
       return reply.send({
