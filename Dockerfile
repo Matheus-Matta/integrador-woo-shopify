@@ -13,6 +13,8 @@ RUN npm install --no-audit --no-fund
 
 # Copia fontes e compila
 COPY . .
+# Garante que public/ existe mesmo vazio
+RUN mkdir -p public
 # Build com output standalone (configurado no next.config.ts)
 RUN npm run build
 
