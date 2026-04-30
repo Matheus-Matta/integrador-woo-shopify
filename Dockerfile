@@ -9,7 +9,7 @@ RUN apk add --no-cache libc6-compat
 # Instala dependências
 COPY package*.json ./
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 # Copia fontes e compila
 COPY . .
