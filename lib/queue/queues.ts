@@ -13,8 +13,6 @@ function redisConnectionFromUrl(url: string) {
   };
 }
 
-const connection = redisConnectionFromUrl(config.redis.url);
-
 const defaultJobOptions = {
   // Retentativas controladas manualmente no worker (job falho vai para o FIM da fila).
   // attempts=1 impede o BullMQ de retentar automaticamente com backoff.
@@ -23,14 +21,34 @@ const defaultJobOptions = {
   removeOnFail: { count: 1000, age: 60 * 60 * 24 * 7 }, // mantém até 1 000 falhas por até 7 dias
 };
 
-// Fila 1 — pedidos e clientes (orders/create, orders/updated, customers/update)
-export const ordersQueue = new Queue('orders', {
-  connection,
-  defaultJobOptions,
+// Lazy — criados na primeira chamada, não na avaliação do módulo
+// Evita conexão ao Redis durante o next build (coleta de dados de página)
+let _ordersQueue: Queue | undefined;
+let _productsQueue: Queue | undefined;
+
+function getConnection() {
+  return redisConnectionFromUrl(config.redis.url);
+}
+
+export function getOrdersQueue(): Queue {
+  if (!_ordersQueue) {
+    _ordersQueue = new Queue('orders', { connection: getConnection(), defaultJobOptions });
+  }
+  return _ordersQueue;
+}
+
+export function getProductsQueue(): Queue {
+  if (!_productsQueue) {
+    _productsQueue = new Queue('products', { connection: getConnection(), defaultJobOptions });
+  }
+  return _productsQueue;
+}
+
+// Re-exporta como getters para compatibilidade com imports existentes
+export const ordersQueue = new Proxy({} as Queue, {
+  get(_t, prop) { return (getOrdersQueue() as never)[prop as keyof Queue]; },
 });
 
-// Fila 2 — produtos (woo product.updated)
-export const productsQueue = new Queue('products', {
-  connection,
-  defaultJobOptions,
+export const productsQueue = new Proxy({} as Queue, {
+  get(_t, prop) { return (getProductsQueue() as never)[prop as keyof Queue]; },
 });

@@ -1,0 +1,25 @@
+# Dependências (reinstaladas no container)
+node_modules
+npm-debug.log*
+
+# Build anterior (evita cache sujo)
+.next
+out
+
+# Config em runtime — vem de env vars, não deve entrar na imagem
+config.json
+
+# Arquivos de ambiente locais
+.env
+.env.*
+
+# Git / CI
+.git
+.gitignore
+.github
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
