@@ -51,6 +51,7 @@ export function extractNeighborhoodFromAddress2(address2: unknown): string {
   if (!txt) return '';
   const parts = txt.split(',').map((p) => p.trim()).filter(Boolean);
   return parts.length > 1 ? parts[parts.length - 1] : txt;
+}
 
 interface NoteAttr { name?: string; key?: string; value?: string }
 
