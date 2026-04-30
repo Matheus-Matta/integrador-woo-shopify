@@ -81,7 +81,7 @@ services:
       MONGODB_URL: mongodb://${MONGO_ROOT_USER:-integrador}:${MONGO_ROOT_PASSWORD:-300401}@mongodb:27017/integrador?authSource=admin
       NODE_ENV: production
       # Adiciona variável para controle de versão do Next.js
-      NEXT_PUBLIC_NEXT_VERSION=16.2.5
+      NEXT_PUBLIC_NEXT_VERSION: "16.2.5"
     ports:
       - "${PORT:-3005}:${PORT:-3005}"
     deploy:
