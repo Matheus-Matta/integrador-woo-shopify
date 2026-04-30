@@ -197,8 +197,8 @@ export const config = {
   logLevel: process.env.LOG_LEVEL ?? 'info',
 
   dashboard: {
-    password: require_env('DASHBOARD_PASSWORD'),
-    jwtSecret: require_env('DASHBOARD_JWT_SECRET'),
+    get password() { return require_env('DASHBOARD_PASSWORD'); },
+    get jwtSecret() { return require_env('DASHBOARD_JWT_SECRET'); },
   },
 
   queue: {
