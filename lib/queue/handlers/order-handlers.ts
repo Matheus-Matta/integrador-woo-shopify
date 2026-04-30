@@ -591,9 +591,48 @@ export async function handleShopOrderUpdate(order: Record<string, unknown>): Pro
       throw err;
     }
   } else {
-    // Pedido ainda não existe no Woo — provavelmente o orders/create ainda não processou.
-    // Lança erro para que o job vá para o FIM da fila e tente novamente após os demais jobs.
-    throw new Error(`[shop-order-update] Pedido Shopify ${shopifyOrderId} não encontrado no Woo — será retentado`);
+    // Pedido não existe no Woo — cria como fallback (orders/create pode ter sido perdido)
+    const ensuredCoupons = await ensureCouponsForOrder('starchats', order);
+    const payload = buildOrderPayload(
+      order, shopifyOrderId, email, wooCustomer.id, cpfFinal,
+      undefined,
+      undefined,
+      ensuredCoupons,
+    );
+    try {
+      const created = await createOrder('starchats', payload);
+      await logOrder({
+        shopify_order_id: shopifyOrderId,
+        shopify_order_name: s(order?.name),
+        woo_order_id: created.id,
+        woo_instance: 'starchats',
+        action: 'create',
+        webhook: order,
+        payload,
+        response: created,
+        status: 'success',
+      });
+    } catch (err: any) {
+      const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+      await logError({
+        flow: 'shop-order-update',
+        error_message: `Fallback create falhou: ${details}`,
+        payload: { shopifyOrderId, payload },
+        entity_type: 'order',
+        entity_id: shopifyOrderId,
+        shopify_order_id: shopifyOrderId,
+        stack: err.stack,
+      });
+      await logOrder({
+        shopify_order_id: shopifyOrderId,
+        shopify_order_name: s(order?.name),
+        action: 'create_failed',
+        payload,
+        response: err.response?.data || { error: err.message },
+        status: 'error',
+      });
+      throw err;
+    }
   }
 }
 
