@@ -5,6 +5,8 @@ import type {
   WebhookStatusResponse,
   WebhookSyncResponse,
   DashboardConfig,
+  LogEntitiesResponse,
+  LogEntityDetail,
 } from '@/types';
 
 // Como o frontend e o backend agora são o mesmo app Next.js, 

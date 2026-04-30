@@ -211,7 +211,7 @@ function normalizeServiceLabel(rawName: string): string {
 }
 
 interface ItemProp { name?: string; value?: string }
-interface LineItem { sku?: string; product_id?: string; quantity?: number; price?: unknown; properties?: ItemProp[] }
+interface LineItem { sku?: string; product_id?: string; quantity?: number; price?: unknown; properties?: ItemProp[]; total_discount?: unknown; discount_allocations?: unknown[] }
 
 export function buildEpofwMeta(
   prop: ItemProp,

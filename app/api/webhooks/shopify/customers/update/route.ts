@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const data = JSON.parse(buffer.toString('utf8') || '{}');
+    const data = JSON.parse(rawBody || '{}');
 
     if (!data?.email) {
       return NextResponse.json({ error: 'email do cliente é obrigatorio' }, { status: 400 });

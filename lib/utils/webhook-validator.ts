@@ -9,7 +9,7 @@ export function verifyShopifyHmac(rawBody: Buffer | string, signature: string): 
   if (config.skipHmac) return true;
   if (!signature) return false;
   const digest = createHmac('sha256', config.shopify.webhookSecret)
-    .update(rawBody as any, typeof rawBody === 'string' ? 'utf8' : undefined)
+    .update(rawBody as any, typeof rawBody === 'string' ? ('utf8' as BufferEncoding) : 'utf8')
     .digest('base64');
   const match = (() => { try { return timingSafeEqual(Buffer.from(digest), Buffer.from(signature)); } catch { return false; } })();
   if (!match) {

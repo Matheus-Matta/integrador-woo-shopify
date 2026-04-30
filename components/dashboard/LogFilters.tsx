@@ -78,7 +78,7 @@ export function LogFilters({ type, filters, onChange }: LogFiltersProps) {
           {type !== 'error' && (
             <Select
               value={filters.status ?? ''}
-              onValueChange={(val) => onChange({ ...filters, status: val === "all" ? "" : val, page: 1 })}
+              onValueChange={(val) => val !== null && onChange({ ...filters, status: val === "all" ? (undefined as unknown as string) : val, page: 1 })}
             >
               <SelectTrigger className="w-[160px] bg-background">
                 <SelectValue placeholder="Todos os status" />
@@ -111,7 +111,7 @@ export function LogFilters({ type, filters, onChange }: LogFiltersProps) {
           {ACTION_OPTIONS[type].length > 0 && (
             <Select
               value={filters.action ?? ''}
-              onValueChange={(val) => onChange({ ...filters, action: val === "all" ? "" : val, page: 1 })}
+              onValueChange={(val) => val !== null && onChange({ ...filters, action: val === "all" ? (undefined as unknown as string) : val, page: 1 })}
             >
               <SelectTrigger className="w-[180px] bg-background">
                 <SelectValue placeholder="Todas as ações" />
@@ -139,8 +139,8 @@ export function LogFilters({ type, filters, onChange }: LogFiltersProps) {
               setDate={(date) => {
                 onChange({
                   ...filters,
-                  from: date?.from ? format(date.from, 'yyyy-MM-dd') : undefined,
-                  to: date?.to ? format(date.to, 'yyyy-MM-dd') : undefined,
+                  from: date?.from ? format(date.from, 'yyyy-MM-dd') : (undefined as unknown as string),
+                  to: date?.to ? format(date.to, 'yyyy-MM-dd') : (undefined as unknown as string),
                   page: 1
                 })
               }}

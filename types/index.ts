@@ -71,6 +71,7 @@ export interface LogEntitySummary {
   lastTimestamp: string;
   count: number;
   status: 'success' | 'error' | 'skipped';
+  wooOrderId?: string;
 }
 
 export interface LogEntityDetail {

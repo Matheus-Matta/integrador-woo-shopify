@@ -137,7 +137,7 @@ export function WebhookTable() {
                   <Label>Plataforma</Label>
                   <Select
                     value={formData.platform}
-                    onValueChange={(val) => setFormData({ ...formData, platform: val })}
+                    onValueChange={(val) => val && setFormData({ ...formData, platform: val })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a plataforma" />
