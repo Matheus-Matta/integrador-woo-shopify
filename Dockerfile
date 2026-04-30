@@ -3,36 +3,44 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Instala dependências (incluindo devDependencies para compilar)
+# Dependências necessárias para Next em Alpine
+RUN apk add --no-cache libc6-compat
+
+# Instala dependências
 COPY package*.json ./
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm ci
 
-# Copia fontes e compila TypeScript → dist/ + copia HTMLs do dashboard
-COPY tsconfig.json ./
-COPY src/ ./src/
+# Copia fontes e compila
+COPY . .
+# Build com output standalone (configurado no next.config.ts)
 RUN npm run build
-
-# Remove devDependencies do node_modules para o runtime ficar enxuto
-RUN npm prune --omit=dev
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM node:24-alpine AS runtime
 
-# Cria usuário sem privilégios (não roda como root)
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-
 WORKDIR /app
 
-# Copia apenas o necessário da etapa de build
-COPY --from=builder /app/dist       ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+RUN apk add --no-cache libc6-compat
+
+# Cria usuário sem privilégios
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copia apenas o necessário do build (standalone)
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# Permissões
+RUN chown -R appuser:appgroup /app
 
 USER appuser
 
-# A porta é definida pela variável PORT no .env / docker-compose
+# Porta padrão (sobreposta por env/compose)
+ENV NODE_ENV=production \
+	PORT=3005
+
 EXPOSE 3005
 
-ENV NODE_ENV=production
-
-CMD ["node", "dist/index.js"]
+# Inicia o servidor standalone do Next
+CMD ["node", "server.js"]

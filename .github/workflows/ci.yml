@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Type-check (tsc --noEmit)
-        run: npm run lint
+        run: npx tsc --noEmit
 
       - name: Security audit
         run: npm audit --audit-level=high
@@ -140,19 +140,18 @@ jobs:
         id: image
         run: echo "name=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Substituir imagem no compose para usar a recém-publicada
+      - name: Definir APP_TAG no .env para usar imagem recém-publicada
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:sha-$(git rev-parse --short HEAD)"
-          sed -i "s|image: integrador-shopify-woo:local|image: ${IMAGE_TAG}|g" docker-compose.yml
+          echo "APP_TAG=sha-$(git rev-parse --short HEAD)" >> .env
 
       - name: Subir serviços
         run: docker compose up -d --wait
         timeout-minutes: 3
 
-      - name: Health check
+      - name: Health check (home page)
         run: |
           sleep 5
-          curl --fail --retry 5 --retry-delay 3 http://localhost:3005/health
+          curl --fail --retry 5 --retry-delay 3 http://localhost:3005/
 
       - name: Parar serviços
         if: always()

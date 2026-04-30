@@ -4,22 +4,28 @@ Serviço de integração bidirecional entre Shopify e WooCommerce via webhooks, 
 
 ## Visão geral
 
+O projeto adota uma arquitetura **Fullstack monolítica baseada no Next.js (App Router)**:
+1. **Backend Integrado (API Routes):** Recebe webhooks, gerencia filas assíncronas (BullMQ) através do `instrumentation.ts` e persiste logs no MongoDB.
+2. **Frontend Dashboard:** Visualização de dados, logs e acompanhamento das filas em tempo real via **Server-Sent Events (SSE)**.
+
+Fluxo de integração:
 ```
-Shopify ──webhooks──▶ Fastify ──▶ BullMQ (Redis) ──▶ WooCommerce REST API
-WooCommerce ──webhooks──▶ Fastify ──▶ BullMQ ──▶ Shopify GraphQL API
+Shopify ──webhooks──▶ Next.js (API) ──▶ BullMQ (Redis) ──▶ WooCommerce REST API
+WooCommerce ──webhooks──▶ Next.js (API) ──▶ BullMQ ──▶ Shopify GraphQL API
 ```
 
 - Recebe webhooks do Shopify e WooCommerce
 - Processa em fila sequencial (concurrency = 1) para evitar condições de corrida
 - Jobs com falha vão ao **fim** da fila e reentram até `QUEUE_ATTEMPTS` tentativas
-- Logs persistidos no MongoDB; dashboard em tempo real via WebSocket
+- Logs persistidos no MongoDB; dashboard reativo em tempo real via SSE.
 
 ## Tecnologias
 
 | Camada | Tecnologia |
 |---|---|
-| HTTP server | Fastify 5 |
-| Filas | BullMQ + Redis 7 |
+| Fullstack Framework | Next.js 16 (App Router) / React 19 |
+| Estilização (Frontend) | TailwindCSS 4, Flowbite |
+| Filas & Background | BullMQ + Redis 7 |
 | Banco de logs | MongoDB 7 / Mongoose |
 | Cache / dedup | Redis (ioredis) |
 | Linguagem | TypeScript / Node.js |
@@ -28,7 +34,7 @@ WooCommerce ──webhooks──▶ Fastify ──▶ BullMQ ──▶ Shopify G
 ## Requisitos
 
 - Docker e Docker Compose
-- Node.js 20+ (apenas para desenvolvimento local)
+- Node.js 20+
 
 ## Instalação
 
@@ -37,16 +43,16 @@ WooCommerce ──webhooks──▶ Fastify ──▶ BullMQ ──▶ Shopify G
 git clone https://github.com/Matheus-Matta/integrador-woo-shopify.git
 cd integrador-woo-shopify
 
-# Copie e preencha as variáveis de ambiente
+# Copie as variáveis de ambiente
 cp .env.example .env
 ```
 
-## Variáveis de ambiente
+## Variáveis de ambiente (`.env`)
 
-Crie um arquivo `.env` na raiz com as seguintes variáveis:
+Crie ou edite o arquivo `.env` com as seguintes variáveis:
 
 ```dotenv
-PORT=3005
+PORT=3000
 TZ=America/Sao_Paulo
 
 # Shopify
@@ -92,14 +98,13 @@ SCHEDULER_LOOKBACK_HOURS=2      # janela de lookback em horas
 
 ## Execução
 
-### Docker (recomendado)
+### Docker (Serviços de apoio)
+
+Recomenda-se subir os serviços de banco de dados e redis via Docker Compose:
 
 ```bash
-# Sobe tudo (app + redis + mongodb)
+# Sobe o redis e mongodb
 docker compose up -d
-
-# Acompanha logs
-docker compose logs -f app
 ```
 
 ### Desenvolvimento local
@@ -108,6 +113,7 @@ docker compose logs -f app
 npm install
 npm run dev
 ```
+> **Nota:** Os serviços de background (BullMQ, Scheduler) e conexão do MongoDB iniciarão automaticamente através do `instrumentation.ts` apenas no runtime do Node.
 
 ### Build de produção
 
@@ -118,46 +124,29 @@ npm start
 
 ## Estrutura do projeto
 
-```
-src/
-├── config.ts                  # Leitura e validação das variáveis de ambiente
-├── index.ts                   # Entry point
-├── server.ts                  # Instância Fastify + plugins + rotas
-├── dashboard/
-│   ├── api.ts                 # Endpoints REST do dashboard
-│   ├── auth.ts                # JWT login/logout
-│   ├── webhooks.ts            # Listagem de webhooks registrados
-│   ├── ws.ts                  # WebSocket para logs em tempo real
-│   ├── index.html             # SPA do dashboard (Alpine.js + Tailwind)
-│   └── login.html             # Tela de login
-├── db/
-│   ├── mongo.ts               # Schemas Mongoose (orders, customers, products, errors)
-│   └── redis.ts               # Instância ioredis
-├── queue/
-│   ├── queues.ts              # Definição das filas BullMQ
-│   ├── workers.ts             # Workers + lógica de retry no fim da fila
-│   └── handlers/
-│       ├── order-handlers.ts  # Handlers de pedidos (create/update)
-│       └── product-handlers.ts# Handlers de produtos
-├── routes/
-│   ├── shop-order-create.ts   # Webhook Shopify orders/create
-│   ├── shop-order-update.ts   # Webhook Shopify orders/updated
-│   ├── shop-customer-create.ts# Webhook Shopify customers/create
-│   ├── shop-customer-update.ts# Webhook Shopify customers/updated
-│   ├── woo-order-update.ts    # Webhook WooCommerce order.updated
-│   └── woo-product.ts         # Webhook WooCommerce product.*
-├── scheduler/
-│   └── syncChecker.ts         # Verificação periódica de sincronização
-├── services/
-│   ├── emitter.ts             # EventEmitter para logs em tempo real
-│   ├── jwtDenylist.ts         # Denylist de tokens JWT revogados
-│   ├── logger.ts              # Funções de log para MongoDB
-│   ├── shopify.ts             # Cliente GraphQL Shopify
-│   ├── webhookDedup.ts        # Deduplicação de webhooks via Redis
-│   └── woocommerce.ts         # Cliente REST WooCommerce
-└── utils/
-    ├── helpers.ts             # Transformações de dados (payload, endereço, frete)
-    └── webhook-validator.ts   # Validação HMAC de webhooks
+```text
+├── app/                       # Rotas da API e Páginas UI (Next.js App Router)
+│   ├── api/
+│   │   ├── auth/              # Endpoints de login e logout (JWT via cookies)
+│   │   ├── dashboard/         # Endpoints REST (logs, SSE de eventos em tempo real)
+│   │   └── webhooks/          # Recebimento de Webhooks do Shopify e WooCommerce
+│   ├── dashboard/             # Páginas protegidas do painel administrativo
+│   │   ├── customers/
+│   │   ├── errors/
+│   │   ├── products/
+│   │   ├── queues/
+│   │   └── webhooks/
+│   └── login/                 # Página de acesso público
+├── components/                # Componentes React de UI (Flowbite/Tailwind)
+├── hooks/                     # Custom Hooks (React Query, Server-Sent Events)
+├── lib/                       # Lógica de Backend (Serviços, Filas, DB)
+│   ├── config.ts              # Validação de variáveis de ambiente
+│   ├── db/                    # Instância do MongoDB e Redis
+│   ├── queue/                 # Filas e Workers (BullMQ)
+│   ├── scheduler/             # Agendadores (Sync Checker)
+│   ├── services/              # Integração de terceiros (Shopify, WooCommerce)
+│   └── utils/                 # Ferramentas auxiliares (validação HMAC, etc)
+└── instrumentation.ts         # Boot do banco e dos workers do backend no startup
 ```
 
 ## Webhooks configurados
@@ -180,11 +169,11 @@ src/
 
 ## Dashboard
 
-Acesse `http://localhost:3005/dashboard` após subir o serviço.
+O Dashboard completo está disponível em `http://localhost:3000`.
 
-- Visualização em tempo real de logs de pedidos, clientes, produtos e erros
-- Modal com 3 painéis por registro: **Webhook recebido** / **Payload enviado ao Woo** / **Resposta do Woo**
-- Autenticação via JWT com senha definida em `DASHBOARD_PASSWORD`
+- Visualização em tempo real de logs de pedidos, clientes, produtos e erros via **SSE (Server-Sent Events)**.
+- Modal detalhado com 3 abas por registro: **Webhook Recebido** / **Payload Enviado** / **Resposta**.
+- Autenticação consumindo API Routes com cookies `httpOnly`, a senha é definida em `DASHBOARD_PASSWORD`.
 
 ## Licença
 
