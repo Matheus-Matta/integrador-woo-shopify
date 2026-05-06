@@ -270,26 +270,30 @@ export interface WooLineItem {
 }
 
 export function buildLineItems(order: Record<string, unknown>): Record<string, unknown>[] {
-  return arrayOf<LineItem>(order?.line_items).map((item) => {
+  const result: Record<string, unknown>[] = [];
+  for (const item of arrayOf<LineItem>(order?.line_items)) {
     const quantity = Number(item?.quantity ?? 1) || 1;
     const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
-    
-    // Calcula desconto total do item (descontos diretos + alocações de cupons do pedido)
+
+    // Desconto total do item (direto + allocations de cupom)
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
     const allocs = arrayOf<{ amount?: string }>(item?.discount_allocations);
     const allocDiscount = allocs.reduce((acc, a) => acc + (Number(a.amount) || 0), 0);
     const totalDiscount = lineDiscount + allocDiscount;
 
-    return {
-      name: s((item as Record<string, unknown>)?.title ?? item?.sku ?? ''),
-      sku: s(item?.sku),
-      quantity,
-      total: money((unitPrice * quantity) - totalDiscount),
-      meta_data: arrayOf<ItemProp>(item?.properties)
-        .map((prop) => buildEpofwMeta(prop, item))
-        .filter(Boolean),
-    };
-  });
+    const name = s((item as Record<string, unknown>)?.title ?? item?.sku ?? '');
+    const sku = s(item?.sku);
+    const metaData = arrayOf<ItemProp>(item?.properties)
+      .map((prop) => buildEpofwMeta(prop, item))
+      .filter(Boolean);
+
+    // Explode: 1 linha por unidade (qty=1)
+    const perUnitTotal = ((unitPrice * quantity) - totalDiscount) / quantity;
+    for (let i = 0; i < quantity; i++) {
+      result.push({ name, sku, quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+    }
+  }
+  return result;
 }
 
 /**
@@ -298,23 +302,26 @@ export function buildLineItems(order: Record<string, unknown>): Record<string, u
  * deixando o WooCommerce calcular o rateio do desconto do cupom.
  */
 export function buildLineItemsForCoupons(order: Record<string, unknown>): Record<string, unknown>[] {
-  return arrayOf<LineItem>(order?.line_items).map((item) => {
+  const result: Record<string, unknown>[] = [];
+  for (const item of arrayOf<LineItem>(order?.line_items)) {
     const quantity = Number(item?.quantity ?? 1) || 1;
     const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
 
-    // Desconta apenas descontos diretos do item; ignora allocations de cupom
+    // Apenas descontos diretos do item; ignora allocations de cupom
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
 
-    return {
-      name: s((item as Record<string, unknown>)?.title ?? item?.sku ?? ''),
-      sku: s(item?.sku),
-      quantity,
-      total: money((unitPrice * quantity) - lineDiscount),
-      meta_data: arrayOf<ItemProp>(item?.properties)
-        .map((prop) => buildEpofwMeta(prop, item))
-        .filter(Boolean),
-    };
-  });
+    const name = s((item as Record<string, unknown>)?.title ?? item?.sku ?? '');
+    const sku = s(item?.sku);
+    const metaData = arrayOf<ItemProp>(item?.properties)
+      .map((prop) => buildEpofwMeta(prop, item))
+      .filter(Boolean);
+
+    const perUnitTotal = ((unitPrice * quantity) - lineDiscount) / quantity;
+    for (let i = 0; i < quantity; i++) {
+      result.push({ name, sku, quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+    }
+  }
+  return result;
 }
 
 /**
@@ -347,7 +354,7 @@ export function mergeLineItems(
     const allocs = arrayOf<{ amount?: string }>(item?.discount_allocations);
     const allocDiscount = allocs.reduce((acc, a) => acc + (Number(a.amount) || 0), 0);
     const totalDiscount = lineDiscount + allocDiscount;
-    const total = money((unitPrice * quantity) - totalDiscount);
+    const perUnitTotal = ((unitPrice * quantity) - totalDiscount) / quantity;
 
     const name = s((item as Record<string, unknown>)?.title ?? item?.sku ?? '');
     const metaData = arrayOf<ItemProp>(item?.properties)
@@ -360,12 +367,18 @@ export function mergeLineItems(
       existingWooItems.find((w) => w.name.toLowerCase() === name.toLowerCase());
 
     if (wooMatch && !usedWooIds.has(wooMatch.id)) {
-      // Atualiza item existente: preserva o id → Woo não cria duplicata
+      // Usa 1 unidade no item existente
       usedWooIds.add(wooMatch.id);
-      result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity, total, meta_data: metaData });
+      result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      // Unidades restantes entram como novos itens (sem id), qty=1
+      for (let i = 1; i < quantity; i++) {
+        result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      }
     } else {
-      // Item novo no Shopify que não existe no Woo: cria
-      result.push({ name, sku: s(item?.sku), quantity, total, meta_data: metaData });
+      // Sem match: cria N itens novos qty=1
+      for (let i = 0; i < quantity; i++) {
+        result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      }
     }
   }
 
@@ -407,7 +420,7 @@ export function mergeLineItemsForCoupons(
 
     // Apenas desconto direto do item; ignora allocations de cupom
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
-    const total = money((unitPrice * quantity) - lineDiscount);
+    const perUnitTotal = ((unitPrice * quantity) - lineDiscount) / quantity;
 
     const name = s((item as Record<string, unknown>)?.title ?? item?.sku ?? '');
     const metaData = arrayOf<ItemProp>(item?.properties)
@@ -420,9 +433,17 @@ export function mergeLineItemsForCoupons(
 
     if (wooMatch && !usedWooIds.has(wooMatch.id)) {
       usedWooIds.add(wooMatch.id);
-      result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity, total, meta_data: metaData });
+      // Atualiza item existente com 1 unidade
+      result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      // Restante como novos itens qty=1
+      for (let i = 1; i < quantity; i++) {
+        result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      }
     } else {
-      result.push({ name, sku: s(item?.sku), quantity, total, meta_data: metaData });
+      // Sem match: cria N itens qty=1
+      for (let i = 0; i < quantity; i++) {
+        result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      }
     }
   }
 

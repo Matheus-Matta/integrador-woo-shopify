@@ -25,6 +25,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Rewrites para rotas legadas de webhooks → preserva método/body
+  async rewrites() {
+    return [
+      // WooCommerce (legadas → novas)
+      { source: '/webhook/woo-product', destination: '/api/webhooks/woo/products' },
+      { source: '/webhook/woo-order-update', destination: '/api/webhooks/woo/orders/update' },
+
+      // Shopify (legadas → novas)
+      { source: '/webhook/shop-order-create', destination: '/api/webhooks/shopify/orders/create' },
+      { source: '/webhook/shop-order-update', destination: '/api/webhooks/shopify/orders/update' },
+      { source: '/webhook/shop-customer-create', destination: '/api/webhooks/shopify/customers/create' },
+      { source: '/webhook/shop-customer-update', destination: '/api/webhooks/shopify/customers/update' },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -43,14 +43,14 @@ function errMsg(e: unknown): string {
 function expectedWebhooks(domain: string) {
   return {
     shopify: [
-      { topic: 'ORDERS_CREATE',    callbackUrl: `${domain}/webhook/shop-order-create`    },
-      { topic: 'ORDERS_CREATE',    callbackUrl: `${domain}/webhook/shop-customer-create` },
-      { topic: 'ORDERS_UPDATED',   callbackUrl: `${domain}/webhook/shop-order-update`    },
-      { topic: 'CUSTOMERS_UPDATE', callbackUrl: `${domain}/webhook/shop-customer-update` },
+      { topic: 'ORDERS_CREATE',    callbackUrl: `${domain}/api/webhooks/shopify/orders/create`    },
+      { topic: 'ORDERS_CREATE',    callbackUrl: `${domain}/api/webhooks/shopify/customers/create` },
+      { topic: 'ORDERS_UPDATED',   callbackUrl: `${domain}/api/webhooks/shopify/orders/update`    },
+      { topic: 'CUSTOMERS_UPDATE', callbackUrl: `${domain}/api/webhooks/shopify/customers/update` },
     ],
     woocommerce: [
-      { topic: 'order.updated',   deliveryUrl: `${domain}/webhook/woo-order-update` },
-      { topic: 'product.updated', deliveryUrl: `${domain}/webhook/woo-product`      },
+      { topic: 'order.updated',   deliveryUrl: `${domain}/api/webhooks/woo/orders/update` },
+      { topic: 'product.updated', deliveryUrl: `${domain}/api/webhooks/woo/products`      },
     ],
   };
 }
