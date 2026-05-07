@@ -10,6 +10,7 @@ export async function GET() {
       active: config.scheduler.active,
       intervalMs: config.scheduler.intervalMs,
       lookbackHours: config.scheduler.lookbackHours,
+      productDailySync: config.productDailySync,
     });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
@@ -29,7 +30,8 @@ export async function POST(request: Request) {
         active: newActive,
         intervalMs: newIntervalMs,
         lookbackHours: newLookbackHours,
-      }
+      },
+      productDailySync: body.productDailySync || config.productDailySync,
     });
 
     // Apply immediately

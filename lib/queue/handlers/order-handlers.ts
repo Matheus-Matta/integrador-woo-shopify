@@ -296,7 +296,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   const billingNeighborhood = getNeighborhoodFromShopify(order, bill);
   const shippingNumber = getNumberFromShopify(order, ship) || billingNumber;
   const shippingNeighborhood = getNeighborhoodFromShopify(order, ship) || billingNeighborhood;
-  const { payment_method, payment_method_title } = getPaymentData(order);
+  const paymentData = getPaymentData(order);
 
   const meta_data = [
     { key: '_shopify_order_id', value: shopifyOrderId },
@@ -319,7 +319,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   const payload: Record<string, unknown> = {
     status: mapStatus(order),
     currency: s(order?.currency ?? order?.presentment_currency ?? 'BRL'),
-    payment_method, payment_method_title,
+    ...(paymentData ?? {}),
     transaction_id: shopifyOrderId,
     customer_id: wooCustomer?.id,
     billing: {
@@ -401,7 +401,7 @@ function buildOrderPayload(
   const shippingNeighborhood = getNeighborhoodFromShopify(order, ship) || billingNeighborhood;
   const deliveryDate = getDeliveryDateFromShopify(order);
   const deliveryType = getDeliveryTypeFromShopify(order);
-  const { payment_method, payment_method_title } = getPaymentData(order);
+  const paymentData = getPaymentData(order);
 
   const meta_data = [
     { key: '_billing_cpf', value: cpfFinal }, { key: '_billing_persontype', value: '1' },
@@ -430,7 +430,7 @@ function buildOrderPayload(
   return {
     status: mapStatus(order),
     currency: s(order?.currency ?? order?.presentment_currency ?? 'BRL'),
-    payment_method, payment_method_title,
+    ...(paymentData ?? {}),
     transaction_id: shopifyOrderId,
     customer_id: customerId,
     ...(isBillingPresent ? {

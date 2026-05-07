@@ -16,12 +16,20 @@ import {
   IconInfoCircle,
   IconChecks,
   IconAlertTriangle,
+  IconDatabaseExport,
+  IconRocket,
 } from '@tabler/icons-react';
+import { toast } from 'sonner';
 
 interface SchedulerConfig {
   active: boolean;
   intervalMs: number;
   lookbackHours: number;
+  productDailySync: {
+    active: boolean;
+    hour: number;
+    minute: number;
+  };
 }
 
 const MS_IN_MINUTE = 60_000;
@@ -36,7 +44,11 @@ export default function SchedulerSettingsPage() {
     active: true,
     intervalMinutes: 30,
     lookbackHours: 2,
+    productDailyActive: true,
+    productDailyHour: 3,
+    productDailyMinute: 0,
   });
+  const [triggering, setTriggering] = useState<'orders' | 'products' | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -53,6 +65,9 @@ export default function SchedulerSettingsPage() {
         active: data.active,
         intervalMinutes: msToMinutes(data.intervalMs),
         lookbackHours: data.lookbackHours,
+        productDailyActive: data.productDailySync?.active ?? true,
+        productDailyHour: data.productDailySync?.hour ?? 3,
+        productDailyMinute: data.productDailySync?.minute ?? 0,
       });
     } catch {
       setError('Não foi possível carregar a configuração do scheduler.');
@@ -76,6 +91,11 @@ export default function SchedulerSettingsPage() {
           active: form.active,
           intervalMs: form.intervalMinutes * MS_IN_MINUTE,
           lookbackHours: form.lookbackHours,
+          productDailySync: {
+            active: form.productDailyActive,
+            hour: form.productDailyHour,
+            minute: form.productDailyMinute,
+          }
         }),
       });
       const data = await res.json();
@@ -110,6 +130,29 @@ export default function SchedulerSettingsPage() {
       setForm((f) => ({ ...f, active: !active })); // rollback
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTrigger = async (type: 'orders' | 'products') => {
+    const label = type === 'orders' ? 'Sincronização de Pedidos' : 'Sincronização Diária de Produtos';
+    const confirmMessage = `Deseja disparar a ${label} agora? Esta operação pode levar alguns minutos e será executada em segundo plano.`;
+    
+    if (!window.confirm(confirmMessage)) return;
+
+    setTriggering(type);
+    try {
+      const res = await fetch('/api/dashboard/scheduler/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Erro ao disparar');
+      toast.success(data.message || 'Sincronização iniciada!');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setTriggering(null);
     }
   };
 
@@ -198,48 +241,81 @@ export default function SchedulerSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Interval & Lookback */}
+          {/* Daily Product Sync */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Configurações de Tempo</CardTitle>
+              <CardTitle className="text-base flex items-center justify-between">
+                Sincronização Diária de Produtos (Full)
+                <Switch
+                  checked={form.productDailyActive}
+                  onCheckedChange={(checked) => setForm(f => ({ ...f, productDailyActive: checked }))}
+                  disabled={saving}
+                />
+              </CardTitle>
               <CardDescription>
-                Defina com que frequência o scheduler verifica e quão longe no tempo ele olha.
+                Compara Título, Preço e Estoque de todos os produtos uma vez ao dia.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="intervalMinutes">
-                  Intervalo de execução <span className="text-muted-foreground font-normal">(minutos)</span>
-                </Label>
+                <Label htmlFor="productDailyHour">Hora de execução (0-23)</Label>
                 <Input
-                  id="intervalMinutes"
+                  id="productDailyHour"
                   type="number"
-                  min={1}
-                  max={1440}
-                  value={form.intervalMinutes}
-                  onChange={(e) => setForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
+                  min={0}
+                  max={23}
+                  value={form.productDailyHour}
+                  onChange={(e) => setForm(f => ({ ...f, productDailyHour: Number(e.target.value) }))}
+                  disabled={!form.productDailyActive}
                 />
-                <p className="text-xs text-muted-foreground">
-                  O scheduler será executado a cada <strong>{form.intervalMinutes} min</strong>. Mínimo: 1 min.
-                </p>
               </div>
-
               <div className="flex flex-col gap-2">
-                <Label htmlFor="lookbackHours">
-                  Janela de auditoria <span className="text-muted-foreground font-normal">(horas)</span>
-                </Label>
+                <Label htmlFor="productDailyMinute">Minuto de execução (0-59)</Label>
                 <Input
-                  id="lookbackHours"
+                  id="productDailyMinute"
                   type="number"
-                  min={1}
-                  max={72}
-                  value={form.lookbackHours}
-                  onChange={(e) => setForm((f) => ({ ...f, lookbackHours: Number(e.target.value) }))}
+                  min={0}
+                  max={59}
+                  value={form.productDailyMinute}
+                  onChange={(e) => setForm(f => ({ ...f, productDailyMinute: Number(e.target.value) }))}
+                  disabled={!form.productDailyActive}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Pedidos e produtos das últimas <strong>{form.lookbackHours}h</strong> serão auditados.
-                </p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Manual Triggers */}
+          <Card className="border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/10">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <IconRocket className="h-4 w-4 text-emerald-600" />
+                Ações Manuais
+              </CardTitle>
+              <CardDescription>
+                Dispare os processos de auditoria imediatamente sem esperar o próximo ciclo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-emerald-200 hover:bg-emerald-100 dark:border-emerald-800 dark:hover:bg-emerald-900/30 gap-2"
+                onClick={() => handleTrigger('orders')}
+                disabled={triggering !== null}
+              >
+                {triggering === 'orders' ? <Spinner className="h-4 w-4" /> : <IconRefresh className="h-4 w-4 text-emerald-600" />}
+                Sincronizar Pedidos Recentes
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-emerald-200 hover:bg-emerald-100 dark:border-emerald-800 dark:hover:bg-emerald-900/30 gap-2"
+                onClick={() => handleTrigger('products')}
+                disabled={triggering !== null}
+              >
+                {triggering === 'products' ? <Spinner className="h-4 w-4" /> : <IconDatabaseExport className="h-4 w-4 text-emerald-600" />}
+                Sincronizar Todos os Produtos
+              </Button>
             </CardContent>
           </Card>
 

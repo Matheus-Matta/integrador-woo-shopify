@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(xargs grep -l \"dash_token\\\\|middleware\\\\|auth\")",
+      "Bash(xargs grep -l \"verifyAuth\\\\|checkAuth\\\\|middleware\\\\|validateToken\")"
+    ]
+  }
+}

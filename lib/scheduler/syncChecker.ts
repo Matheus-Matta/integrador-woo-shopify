@@ -20,6 +20,7 @@ import { logError } from '../services/logger';
 import {
   getRecentShopifyOrders,
   getRecentShopifyProducts,
+  getProductBySku,
 } from '../services/shopify';
 import {
   getRecentWooOrders,
@@ -142,7 +143,8 @@ function checkStatusMismatch(shopifyFinancial: string, wooStatus: string): boole
   return false;
 }
 
-// ─── Check 2: Produtos ─────────────────────────────────────────────────────
+
+// ─── Check 2: Produtos (Recentes) ──────────────────────────────────────────
 
 async function checkProducts(): Promise<{ total: number; requeued: number; errors: number }> {
   const since = lookbackDate();
@@ -166,7 +168,7 @@ async function checkProducts(): Promise<{ total: number; requeued: number; error
     if (!wooProd.sku) continue;
 
     const shopifyVariant = shopifyBySku.get(wooProd.sku.trim());
-    if (!shopifyVariant) continue; // SKU não está na Shopify — não é responsabilidade deste integrador
+    if (!shopifyVariant) continue;
 
     try {
       const wooPriceFinal = wooProd.sale_price || wooProd.regular_price;
@@ -201,20 +203,102 @@ async function checkProducts(): Promise<{ total: number; requeued: number; error
     } catch (err) {
       errors++;
       console.error(`[Scheduler] Erro ao verificar produto SKU=${wooProd.sku}:`, (err as Error).message);
-      await logError({
-        flow: 'scheduler-product-check',
-        error_message: (err as Error).message,
-        payload: { sku: wooProd.sku },
-      });
     }
   }
 
   return { total: wooProducts.length, requeued, errors };
 }
 
+// ─── Check 3: Produtos (Diário/Completo) ───────────────────────────────────
+/**
+ * Verifica todos (ou uma grande quantidade) de produtos no WooCommerce
+ * e sincroniza com a Shopify comparando Título, Preço e Estoque.
+ */
+async function checkProductsDaily(): Promise<{ total: number; requeued: number; errors: number }> {
+  let requeued = 0;
+  let errors = 0;
+  let totalProcessed = 0;
+  let page = 1;
+  const perPage = 100;
+
+  console.log('[Scheduler] ▶ Iniciando verificação DIÁRIA de produtos (Título + Preço + Estoque)');
+
+  while (true) {
+    try {
+      const wooProducts = await getRecentWooProducts(WOO_INSTANCE, page, perPage);
+      if (wooProducts.length === 0) break;
+
+      totalProcessed += wooProducts.length;
+
+      // Pega variantes da Shopify para esse lote (simplificado: busca por SKU um a um ou em lote se possível)
+      // Para performance, ideal seria buscar em lote, mas vamos manter o padrão do projeto
+      for (const wooProd of wooProducts) {
+        if (!wooProd.sku) continue;
+
+        try {
+          // Busca a variante na Shopify (com cache)
+          const shopifyResult = await getProductBySku(wooProd.sku.trim());
+          const shopifyVariant = shopifyResult.data?.productVariants?.edges?.[0]?.node;
+          
+          if (!shopifyVariant) continue;
+
+          const wooPriceFinal = wooProd.sale_price || wooProd.regular_price;
+          const shopifyPrice = shopifyVariant.price;
+          const shopifyQty = shopifyVariant.inventoryQuantity ?? 0;
+          const wooQty = wooProd.stock_quantity ?? 0;
+          
+          // Novo: Título
+          const wooTitle = wooProd.name;
+          const shopifyTitle = shopifyVariant.product.title;
+
+          const priceMismatch = Number(wooPriceFinal) !== Number(shopifyPrice);
+          const stockMismatch = wooQty !== shopifyQty;
+          const titleMismatch = wooTitle !== shopifyTitle;
+
+          if (priceMismatch || stockMismatch || titleMismatch) {
+            console.log(
+              `[Scheduler][Daily] Produto SKU=${wooProd.sku} divergente —` +
+              (titleMismatch ? ` título Woo="${wooTitle}" Shopify="${shopifyTitle}"` : '') +
+              (priceMismatch ? ` preço Woo=${wooPriceFinal} Shopify=${shopifyPrice}` : '') +
+              (stockMismatch ? ` estoque Woo=${wooQty} Shopify=${shopifyQty}` : '') +
+              ' → re-enfileirando woo-product',
+            );
+
+            await productsQueue.add('woo-product', {
+              sku: wooProd.sku,
+              name: wooProd.name,
+              stock_quantity: wooQty,
+              regular_price: wooProd.regular_price,
+              sale_price: wooProd.sale_price,
+              _scheduler_requeue: true,
+              _scheduler_reason: [
+                titleMismatch ? 'title_mismatch' : '',
+                priceMismatch ? 'price_mismatch' : '',
+                stockMismatch ? 'stock_mismatch' : '',
+              ].filter(Boolean).join('|'),
+            });
+            requeued++;
+          }
+        } catch (err) {
+          errors++;
+          console.error(`[Scheduler][Daily] Erro ao verificar produto SKU=${wooProd.sku}:`, (err as Error).message);
+        }
+      }
+
+      if (wooProducts.length < perPage) break;
+      page++;
+    } catch (err) {
+      console.error(`[Scheduler][Daily] Erro ao buscar página ${page} de produtos:`, err);
+      break;
+    }
+  }
+
+  return { total: totalProcessed, requeued, errors };
+}
+
 // ─── Runner principal ──────────────────────────────────────────────────────
 
-async function runSyncCheck(): Promise<void> {
+export async function runSyncCheck(): Promise<void> {
   const start = Date.now();
   console.log(`[Scheduler] ▶ Verificação de sincronização iniciada (lookback=${config.scheduler.lookbackHours}h)`);
 
@@ -253,6 +337,18 @@ async function runSyncCheck(): Promise<void> {
   }
 }
 
+export async function runDailySync(): Promise<void> {
+  const start = Date.now();
+  try {
+    const stats = await checkProductsDaily();
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    console.log(`[Scheduler] ✓ Sync diário concluído em ${elapsed}s — ${stats.total} total, ${stats.requeued} re-enfileirados, ${stats.errors} erros`);
+  } catch (err) {
+    console.error('[Scheduler] Erro no sync diário:', err);
+    await logError({ flow: 'scheduler-daily', error_message: (err as Error).message });
+  }
+}
+
 // ─── Inicialização ─────────────────────────────────────────────────────────
 
 let _timer: ReturnType<typeof setInterval> | null = null;
@@ -275,7 +371,19 @@ export function startSyncScheduler(): void {
   _timer = setInterval(() => {
     void runSyncCheck();
   }, config.scheduler.intervalMs);
-  _timer.unref(); // não bloqueia o encerramento do processo
+  _timer.unref();
+
+  // Scheduler Diário (checa a cada minuto se é a hora H:M)
+  if (config.productDailySync.active) {
+    console.log(`[Scheduler] Daily Sync agendado para as ${config.productDailySync.hour}:${config.productDailySync.minute}`);
+    const dailyInterval = setInterval(() => {
+      const now = new Date();
+      if (now.getHours() === config.productDailySync.hour && now.getMinutes() === config.productDailySync.minute) {
+        void runDailySync();
+      }
+    }, 60_000);
+    dailyInterval.unref();
+  }
 }
 
 export function stopSyncScheduler(): void {

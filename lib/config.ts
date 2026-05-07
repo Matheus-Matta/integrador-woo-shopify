@@ -76,6 +76,11 @@ export interface SystemDynamicConfig {
     intervalMs: number;
     lookbackHours: number;
   };
+  productDailySync: {
+    active: boolean;
+    hour: number;
+    minute: number;
+  };
 }
 
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
@@ -103,6 +108,11 @@ function loadConfig() {
           active: rawConfig.scheduler?.active ?? true,
           intervalMs: rawConfig.scheduler?.intervalMs ?? 30 * 60 * 1000,
           lookbackHours: rawConfig.scheduler?.lookbackHours ?? 2,
+        },
+        productDailySync: {
+          active: rawConfig.productDailySync?.active ?? true,
+          hour: rawConfig.productDailySync?.hour ?? 3,
+          minute: rawConfig.productDailySync?.minute ?? 0,
         },
       };
     } catch (err) {
@@ -133,6 +143,11 @@ function initFromEnv() {
       intervalMs: Number(process.env.SCHEDULER_INTERVAL_MS ?? 30 * 60 * 1000),
       lookbackHours: Number(process.env.SCHEDULER_LOOKBACK_HOURS ?? 2),
     },
+    productDailySync: {
+      active: process.env.PRODUCT_DAILY_SYNC_ACTIVE !== 'false',
+      hour: Number(process.env.PRODUCT_DAILY_SYNC_HOUR ?? 3),
+      minute: Number(process.env.PRODUCT_DAILY_SYNC_MINUTE ?? 0),
+    },
   };
   saveConfig();
 }
@@ -153,6 +168,7 @@ function saveConfig() {
       },
       domain: dynamicConfig.domain,
       scheduler: dynamicConfig.scheduler,
+      productDailySync: dynamicConfig.productDailySync,
     };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(encryptedConfig, null, 2), 'utf-8');
   } catch (err) {
@@ -167,6 +183,7 @@ export function updateDynamicConfig(newConfig: Partial<SystemDynamicConfig>) {
     shopify: { ...dynamicConfig.shopify, ...(newConfig.shopify || {}) },
     woo: { ...dynamicConfig.woo, ...(newConfig.woo || {}) },
     scheduler: { ...dynamicConfig.scheduler, ...(newConfig.scheduler || {}) },
+    productDailySync: { ...dynamicConfig.productDailySync, ...(newConfig.productDailySync || {}) },
   };
   saveConfig();
 }
@@ -183,6 +200,7 @@ export const config = {
   get woo() { return dynamicConfig.woo; },
   get domain() { return dynamicConfig.domain.replace(/\/$/, ''); },
   get scheduler() { return dynamicConfig.scheduler; },
+  get productDailySync() { return dynamicConfig.productDailySync; },
 
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',

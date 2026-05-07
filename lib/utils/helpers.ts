@@ -27,6 +27,22 @@ export function lower(v: unknown): string {
   return s(v).toLowerCase();
 }
 
+// ─── Serviços (EPOFW) ──────────────────────────────────────────────────────
+
+export function hasServices(order: Record<string, unknown>): boolean {
+  const lineItems = arrayOf<Record<string, unknown>>(order?.line_items);
+  for (const item of lineItems) {
+    const properties = arrayOf<{ name?: string; value?: string }>(item?.properties);
+    for (const prop of properties) {
+      const name = s(prop?.name);
+      if (name && /^_?epofw_field_\d+$/.test(name)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ─── Endereço ──────────────────────────────────────────────────────────────
 
 export function normalizeAddressText(v: unknown): string {
@@ -150,15 +166,14 @@ export function mapStatus(order: Record<string, unknown>): string {
 export function getPaymentData(order: Record<string, unknown>): {
   payment_method: string;
   payment_method_title: string;
-} {
+} | null {
   // A Shopify acrescenta novos gateways ao FINAL de `payment_gateway_names`
   // quando o cliente troca a forma de pagamento (ex.: cartão recusado → boleto/PIX).
   // O último item é sempre o método mais recente. `gateway` é usado como fallback
   // para pedidos onde o array não esteja presente.
   const names = arrayOf<string>(order?.payment_gateway_names);
-  const rawGateway = s(
-    names[names.length - 1] ?? order?.gateway ?? 'manual',
-  );
+  const rawGateway = s(names[names.length - 1] ?? order?.gateway);
+  if (!rawGateway) return null;
   const gatewayLower = lower(rawGateway);
   const payment_method = gatewayLower.startsWith('appmax_')
     ? gatewayLower.replace('appmax_', '')
@@ -349,7 +364,7 @@ export function mergeLineItems(
     const sku = s(item?.sku).toLowerCase();
     const quantity = Number(item?.quantity ?? 1) || 1;
     const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
-    
+
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
     const allocs = arrayOf<{ amount?: string }>(item?.discount_allocations);
     const allocDiscount = allocs.reduce((acc, a) => acc + (Number(a.amount) || 0), 0);
