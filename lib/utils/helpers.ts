@@ -376,22 +376,20 @@ export function mergeLineItems(
       .map((prop) => buildEpofwMeta(prop, item))
       .filter(Boolean);
 
-    // Tenta casar pelo SKU (prioritário), depois pelo nome
-    const wooMatch =
-      (sku ? existingWooItems.find((w) => w.sku.toLowerCase() === sku) : null) ??
-      existingWooItems.find((w) => w.name.toLowerCase() === name.toLowerCase());
+    // Para cada unidade no Shopify, tentamos encontrar um item correspondente ainda não usado no Woo
+    for (let i = 0; i < quantity; i++) {
+      const wooMatch = existingWooItems.find((w) => {
+        if (usedWooIds.has(w.id)) return false;
+        const wSku = s(w.sku).toLowerCase();
+        const wName = s(w.name).toLowerCase();
+        return (sku && wSku === sku) || wName === name.toLowerCase();
+      });
 
-    if (wooMatch && !usedWooIds.has(wooMatch.id)) {
-      // Usa 1 unidade no item existente
-      usedWooIds.add(wooMatch.id);
-      result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
-      // Unidades restantes entram como novos itens (sem id), qty=1
-      for (let i = 1; i < quantity; i++) {
-        result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
-      }
-    } else {
-      // Sem match: cria N itens novos qty=1
-      for (let i = 0; i < quantity; i++) {
+      if (wooMatch) {
+        usedWooIds.add(wooMatch.id);
+        result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      } else {
+        // Sem match disponível: cria novo item (qty=1)
         result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
       }
     }
@@ -442,21 +440,18 @@ export function mergeLineItemsForCoupons(
       .map((prop) => buildEpofwMeta(prop, item))
       .filter(Boolean);
 
-    const wooMatch =
-      (sku ? existingWooItems.find((w) => w.sku.toLowerCase() === sku) : null) ??
-      existingWooItems.find((w) => w.name.toLowerCase() === name.toLowerCase());
+    for (let i = 0; i < quantity; i++) {
+      const wooMatch = existingWooItems.find((w) => {
+        if (usedWooIds.has(w.id)) return false;
+        const wSku = s(w.sku).toLowerCase();
+        const wName = s(w.name).toLowerCase();
+        return (sku && wSku === sku) || wName === name.toLowerCase();
+      });
 
-    if (wooMatch && !usedWooIds.has(wooMatch.id)) {
-      usedWooIds.add(wooMatch.id);
-      // Atualiza item existente com 1 unidade
-      result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
-      // Restante como novos itens qty=1
-      for (let i = 1; i < quantity; i++) {
-        result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
-      }
-    } else {
-      // Sem match: cria N itens qty=1
-      for (let i = 0; i < quantity; i++) {
+      if (wooMatch) {
+        usedWooIds.add(wooMatch.id);
+        result.push({ id: wooMatch.id, name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
+      } else {
         result.push({ name, sku: s(item?.sku), quantity: 1, total: money(perUnitTotal), meta_data: metaData });
       }
     }
