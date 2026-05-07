@@ -1,9 +1,7 @@
 import { config } from '../../config';
 import { productsQueue, ordersQueue } from '../queues';
-import { getRecentWooOrders } from '../../services/woocommerce';
-import { getRecentShopifyProducts } from '../../services/shopify';
-import { getWooProducts } from '../../services/woocommerce';
-import { getProductBySku } from '../../services/shopify';
+import { getRecentWooOrders, getRecentWooProducts } from '../../services/woocommerce';
+import { getRecentShopifyProducts, getProductBySku } from '../../services/shopify';
 import { s, money } from '../../utils/helpers';
 
 // ─── Auditoria de Pedidos Recentes ──────────────────────────────────────────
@@ -16,7 +14,7 @@ export async function handleOrderAudit(): Promise<void> {
   let requeued = 0;
 
   try {
-    const wooOrders = await getRecentWooOrders('starseguro', startTime);
+    const wooOrders = await getRecentWooOrders('starseguro', 1, 100, startTime.toISOString());
     totalProcessed = wooOrders.length;
 
     for (const wooOrder of wooOrders) {
@@ -93,7 +91,7 @@ export async function handleProductFullAudit(): Promise<void> {
 
   while (true) {
     try {
-      const wooProducts = await getWooProducts('starseguro', page, perPage);
+      const wooProducts = await getRecentWooProducts('starseguro', page, perPage);
       if (wooProducts.length === 0) break;
 
       for (const wooProd of wooProducts) {
