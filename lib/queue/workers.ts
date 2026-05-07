@@ -12,6 +12,7 @@ import {
   handleWooOrderUpdate,
 } from './handlers/order-handlers';
 import { handleWooProduct } from './handlers/product-handlers';
+import { handleOrderAudit, handleProductRecentAudit, handleProductFullAudit } from './handlers/audit-handlers';
 
 function redisConnectionFromUrl(url: string) {
   const u = new URL(url);
@@ -61,11 +62,14 @@ const ordersWorker = new Worker(
       case 'woo-order-update':
         await handleWooOrderUpdate(payload);
         break;
+      case 'order-audit':
+        await handleOrderAudit();
+        break;
       default:
         throw new Error(`Job desconhecido na fila orders: ${job.name}`);
     }
   },
-  { connection, concurrency: 1 },
+  { connection, concurrency: 3 },
 );
 
 // ─── Worker Fila 2: products (concurrency=1 = sequencial) ─────────────────
@@ -83,11 +87,17 @@ const productsWorker = new Worker(
       case 'woo-product':
         await handleWooProduct(payload);
         break;
+      case 'product-recent-audit':
+        await handleProductRecentAudit();
+        break;
+      case 'product-full-audit':
+        await handleProductFullAudit();
+        break;
       default:
         throw new Error(`Job desconhecido na fila products: ${job.name}`);
     }
   },
-  { connection, concurrency: 1 },
+  { connection, concurrency: 3 },
 );
 
 // ─── Eventos dos workers ───────────────────────────────────────────────────
