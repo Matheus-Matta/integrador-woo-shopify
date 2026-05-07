@@ -22,6 +22,7 @@ import {
   markOrderAsPaid,
   createFulfillment,
   markFulfillmentDelivered,
+  getFullShopifyOrder,
 } from '../../services/shopify';
 import { logCustomer, logOrder, logError } from '../../services/logger';
 import {
@@ -220,8 +221,16 @@ export async function handleShopCustomerUpdate(order: Record<string, unknown>): 
 // ─── shop-order-create ─────────────────────────────────────────────────────
 
 export async function handleShopOrderCreate(order: Record<string, unknown>): Promise<void> {
+  let shopifyOrderId = String(order?.id ?? '');
+  const isPartial = !arrayOf(order?.line_items).length;
+  
+  if (isPartial && shopifyOrderId) {
+    console.log(`[shop-order-create] Payload parcial detectado para ${shopifyOrderId}. Buscando dados completos na Shopify...`);
+    order = await getFullShopifyOrder(shopifyOrderId);
+  }
+
   const email = s(order?.contact_email ?? order?.email);
-  const shopifyOrderId = String(order?.id ?? '');
+  shopifyOrderId = String(order?.id ?? '');
 
   if (!email || !shopifyOrderId) throw new Error('email e id do pedido são obrigatórios');
 
@@ -473,7 +482,15 @@ function buildOrderPayload(
 // ─── shop-order-update ─────────────────────────────────────────────────────
 
 export async function handleShopOrderUpdate(order: Record<string, unknown>): Promise<void> {
-  const shopifyOrderId = String(order?.id ?? '');
+  let shopifyOrderId = String(order?.id ?? '');
+  const isPartial = !arrayOf(order?.line_items).length || !arrayOf(order?.payment_gateway_names).length;
+
+  if (isPartial && shopifyOrderId) {
+    console.log(`[shop-order-update] Payload parcial detectado para ${shopifyOrderId}. Buscando dados completos na Shopify...`);
+    order = await getFullShopifyOrder(shopifyOrderId);
+  }
+
+  shopifyOrderId = String(order?.id ?? '');
   const adminGid = s(order?.admin_graphql_api_id);
   const email = s(order?.contact_email ?? order?.email);
 

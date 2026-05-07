@@ -183,6 +183,12 @@ export async function getOrderDetails(orderGid: string): Promise<ShopifyOrderDet
   return gql<ShopifyOrderDetails>(query, { id: orderGid });
 }
 
+/** Busca o pedido completo via REST API (essencial para auditorias). */
+export async function getFullShopifyOrder(id: string): Promise<Record<string, unknown>> {
+  const { data } = await shopifyClient.get(`/admin/api/2024-01/orders/${id}.json`);
+  return (data?.order as Record<string, unknown>) || {};
+}
+
 export async function markOrderAsPaid(orderGid: string): Promise<unknown> {
   const query = `mutation MarkOrderAsPaid($input: OrderMarkAsPaidInput!) {
     orderMarkAsPaid(input: $input) {
