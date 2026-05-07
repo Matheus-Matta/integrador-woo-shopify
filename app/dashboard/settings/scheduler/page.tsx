@@ -241,6 +241,49 @@ export default function SchedulerSettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Global Configs */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Ciclo de Auditoria</CardTitle>
+              <CardDescription>
+                Configure a frequência e o alcance da verificação automática de pedidos e produtos.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="intervalMinutes">Intervalo entre ciclos (minutos)</Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    id="intervalMinutes"
+                    type="number"
+                    min={1}
+                    value={form.intervalMinutes}
+                    onChange={(e) => setForm(f => ({ ...f, intervalMinutes: Number(e.target.value) }))}
+                  />
+                  <Badge variant="outline" className="whitespace-nowrap">
+                    {Math.round(1440 / (form.intervalMinutes || 1))} vezes/dia
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="lookbackHours">Janela de Auditoria (horas atrás)</Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    id="lookbackHours"
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={form.lookbackHours}
+                    onChange={(e) => setForm(f => ({ ...f, lookbackHours: Number(e.target.value) }))}
+                  />
+                  <Badge variant="outline" className="whitespace-nowrap">
+                    Alcance de {form.lookbackHours}h
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Daily Product Sync */}
           <Card>
             <CardHeader>
