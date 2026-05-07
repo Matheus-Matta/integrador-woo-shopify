@@ -18,6 +18,8 @@ shopifyClient.interceptors.request.use((req) => {
 export interface ShopifyProductVariant {
   id: string;
   sku: string;
+  price: string;
+  inventoryQuantity?: number;
   product: { id: string; title: string };
   inventoryItem: {
     id: string;
@@ -73,7 +75,7 @@ export async function getProductBySku(sku: string): Promise<ShopifyProductBySku>
     productVariants(query: "sku:${sku}", first: 1) {
       edges {
         node {
-          id sku
+          id sku price inventoryQuantity
           product { id title }
           inventoryItem {
             id
