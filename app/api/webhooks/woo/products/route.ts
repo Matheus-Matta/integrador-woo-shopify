@@ -41,8 +41,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const source = req.headers.get('x-wc-webhook-source') || 'unknown';
-    const data = JSON.parse(buffer.toString('utf8') || '{}');
+    const bodyStr = buffer.toString('utf8').trim();
+    
+    // WooCommerce Ping (webhook_id=...) ou corpos vazios
+    if (bodyStr.startsWith('webhook_id=') || !bodyStr) {
+      console.info(`[woo-product] ℹ️ recebido ping ou corpo não-JSON — ignorado: ${bodyStr.substring(0, 50)}`);
+      return NextResponse.json({ ok: true, message: 'ping received' });
+    }
+
+    let data;
+    try {
+      data = JSON.parse(bodyStr);
+    } catch (e) {
+      console.warn(`[woo-product] ❌ erro ao parsear JSON: ${(e as Error).message}`);
+      return NextResponse.json({ error: 'JSON invalido' }, { status: 400 });
+    }
+    
     const sku = String(data?.sku ?? '');
 
     if (!sku) {
@@ -57,6 +71,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ skipped: true, reason: 'duplicate-product-action' });
     }
 
+    const source = req.headers.get('x-wc-webhook-source') || 'unknown';
     const payload = { ...data, _woo_source: source };
     const job = await productsQueue.add('woo-product', payload);
     console.info(`[woo-product] ✅ enfileirado — jobId=${job.id} sku=${sku} source=${source}`);

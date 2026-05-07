@@ -50,10 +50,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email e id do pedido sao obrigatorios' }, { status: 400 });
     }
 
-    if (!hasServices(order)) {
-      console.warn(`[shop-order-create] ⏭️ pedido sem serviços — descartado: ${shopifyOrderId}`);
-      return NextResponse.json({ skipped: true, reason: 'no-services' });
-    }
+    // Removido check de hasServices para permitir importação total conforme pedido do usuário
 
     const isNewOrder = await deduplicateOrder('shop-order-create', shopifyOrderId);
     if (!isNewOrder) {
