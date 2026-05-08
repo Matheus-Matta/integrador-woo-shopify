@@ -41,3 +41,14 @@ export async function deduplicateOrder(flow: string, orderId: string): Promise<b
   const result = await redis.set(key, '1', 'EX', ttl, 'NX');
   return result === 'OK';
 }
+
+export async function deduplicateFingerprint(
+  flow: string,
+  entityId: string,
+  fingerprint: string,
+  ttlSeconds = 60,
+): Promise<boolean> {
+  const key = `wh:fp:${flow}:${entityId}:${fingerprint}`;
+  const result = await redis.set(key, '1', 'EX', ttlSeconds, 'NX');
+  return result === 'OK';
+}

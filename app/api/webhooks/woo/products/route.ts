@@ -1,9 +1,10 @@
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { verifyWooHmac } from '@/lib/utils/webhook-validator';
 import { productsQueue } from '@/lib/queue/queues';
 import { logError } from '@/lib/services/logger';
-import { deduplicateDelivery, deduplicateOrder } from '@/lib/services/webhookDedup';
+import { deduplicateDelivery, deduplicateFingerprint } from '@/lib/services/webhookDedup';
 
 export async function GET(req: NextRequest) {
   const auth = await requireDashboardAuth(req);
@@ -15,13 +16,13 @@ export async function GET(req: NextRequest) {
     webhook: 'woo-product',
     route: '/api/webhooks/woo/products',
     method: 'POST',
-    description: 'Recebe notificações de atualização de produto do WooCommerce',
+    description: 'Recebe notificacoes de atualizacao de produto do WooCommerce',
   });
 }
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for') || 'unknown';
-  console.log(`[woo-product] 📥 POST recebido — IP: ${ip}`);
+  console.log(`[woo-product] POST recebido - IP: ${ip}`);
 
   try {
     const rawBody = await req.arrayBuffer();
@@ -29,8 +30,8 @@ export async function POST(req: NextRequest) {
     const sig = req.headers.get('x-wc-webhook-signature') || '';
 
     if (!verifyWooHmac(buffer, sig)) {
-      console.warn(`[woo-product] ⚠️ HMAC inválido — rejeitado IP: ${ip}`);
-      void logError({ flow: 'woo-product', error_message: 'HMAC inválido', payload: { sigPresent: Boolean(sig), sigLen: sig.length, ip } });
+      console.warn(`[woo-product] HMAC invalido - rejeitado IP: ${ip}`);
+      void logError({ flow: 'woo-product', error_message: 'HMAC invalido', payload: { sigPresent: Boolean(sig), sigLen: sig.length, ip } });
       return NextResponse.json({ error: 'Assinatura invalida' }, { status: 401 });
     }
 
@@ -38,16 +39,15 @@ export async function POST(req: NextRequest) {
     if (deliveryId) {
       const isNew = await deduplicateDelivery(deliveryId);
       if (!isNew) {
-        console.warn(`[woo-product] ⏭️ delivery duplicado — descartado: ${deliveryId}`);
+        console.warn(`[woo-product] delivery duplicado - descartado: ${deliveryId}`);
         return NextResponse.json({ skipped: true, reason: 'duplicate-delivery' });
       }
     }
 
     const bodyStr = buffer.toString('utf8').trim();
-    
-    // WooCommerce Ping (webhook_id=...) ou corpos vazios
+
     if (bodyStr.startsWith('webhook_id=') || !bodyStr) {
-      console.info(`[woo-product] ℹ️ recebido ping ou corpo não-JSON — ignorado: ${bodyStr.substring(0, 50)}`);
+      console.info(`[woo-product] recebido ping ou corpo nao-JSON - ignorado: ${bodyStr.substring(0, 50)}`);
       return NextResponse.json({ ok: true, message: 'ping received' });
     }
 
@@ -55,31 +55,31 @@ export async function POST(req: NextRequest) {
     try {
       data = JSON.parse(bodyStr);
     } catch (e) {
-      console.warn(`[woo-product] ❌ erro ao parsear JSON: ${(e as Error).message}`);
+      console.warn(`[woo-product] erro ao parsear JSON: ${(e as Error).message}`);
       return NextResponse.json({ error: 'JSON invalido' }, { status: 400 });
     }
-    
-    const sku = String(data?.sku ?? '');
+
+    const sku = String(data?.sku ?? '').trim();
 
     if (!sku) {
-      console.warn(`[woo-product] ❌ SKU ausente — descartado`);
+      console.warn('[woo-product] SKU ausente - descartado');
       return NextResponse.json({ skipped: true, reason: 'no-sku' });
     }
 
-    // Deduplicação baseada em SKU para evitar floods
-    const isNewAction = await deduplicateOrder('woo-product', sku);
-    if (!isNewAction) {
-      console.warn(`[woo-product] ⏭️ produto duplicado (30s) — descartado sku=${sku}`);
-      return NextResponse.json({ skipped: true, reason: 'duplicate-product-action' });
+    const fingerprint = createHash('sha256').update(bodyStr).digest('hex');
+    const isNewPayload = await deduplicateFingerprint('woo-product', sku, fingerprint, 60);
+    if (!isNewPayload) {
+      console.warn(`[woo-product] payload identico duplicado - descartado sku=${sku}`);
+      return NextResponse.json({ skipped: true, reason: 'duplicate-product-payload' });
     }
 
     const source = req.headers.get('x-wc-webhook-source') || 'unknown';
     const payload = { ...data, _woo_source: source };
     const job = await productsQueue.add('woo-product', payload);
-    console.info(`[woo-product] ✅ enfileirado — jobId=${job.id} sku=${sku} source=${source}`);
+    console.info(`[woo-product] enfileirado - jobId=${job.id} sku=${sku} source=${source}`);
     return NextResponse.json({ queued: true, jobId: job.id, sku }, { status: 202 });
   } catch (err) {
-    console.error(`[woo-product] 💥 erro interno — IP: ${ip}`, err);
+    console.error(`[woo-product] erro interno - IP: ${ip}`, err);
     return NextResponse.json({ error: 'Erro interno ao enfileirar job', detail: (err as Error).message }, { status: 500 });
   }
 }

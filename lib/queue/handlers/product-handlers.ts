@@ -12,22 +12,27 @@ export interface WooProductPayload {
   name?: string;
   regular_price?: string;
   sale_price?: string;
+  price?: string;
+  compareAtPrice?: string | null;
   body?: {
     sku?: string;
     stock_quantity?: number;
     name?: string;
     regular_price?: string;
     sale_price?: string;
+    price?: string;
+    compareAtPrice?: string | null;
   };
 }
 
 export async function handleWooProduct(raw: WooProductPayload): Promise<void> {
   const prod = raw?.body ?? raw;
   const sku = s(prod?.sku);
-  const stockQtd = Number(prod?.stock_quantity ?? 0);
+  const hasStockQuantity = prod?.stock_quantity !== null && prod?.stock_quantity !== undefined;
+  const stockQtd = Number(prod?.stock_quantity);
   const name = s(prod?.name);
-  const regularPrice = s(prod?.regular_price);
-  const salePrice = s(prod?.sale_price);
+  const regularPrice = s(prod?.regular_price ?? prod?.compareAtPrice);
+  const salePrice = s(prod?.sale_price ?? prod?.price);
 
   if (!sku) throw new Error('SKU obrigatório');
 
@@ -61,11 +66,15 @@ export async function handleWooProduct(raw: WooProductPayload): Promise<void> {
     await logProduct({ sku, action: 'title_update', after: { name }, shopify_response: titleRes });
   }
 
-  const stockRes = await updateStock(inventoryItemId, locationId, delta);
-  await logProduct({ sku, action: 'stock_update', before: { quantity: currentQty }, after: { quantity: stockQtd, delta }, shopify_response: stockRes });
+  if (hasStockQuantity && locationId) {
+    const stockRes = await updateStock(inventoryItemId, locationId, delta);
+    await logProduct({ sku, action: 'stock_update', before: { quantity: currentQty }, after: { quantity: stockQtd, delta }, shopify_response: stockRes });
+  }
 
   const finalPrice = salePrice && salePrice !== '' ? salePrice : regularPrice;
   const compareAtPrice = salePrice && salePrice !== '' ? regularPrice : null;
-  const priceRes = await updatePrice(productId, variantId, money(finalPrice), compareAtPrice ? money(compareAtPrice) : null);
-  await logProduct({ sku, action: 'price_update', after: { price: finalPrice, compareAtPrice }, shopify_response: priceRes });
+  if (finalPrice) {
+    const priceRes = await updatePrice(productId, variantId, money(finalPrice), compareAtPrice ? money(compareAtPrice) : null);
+    await logProduct({ sku, action: 'price_update', after: { price: finalPrice, compareAtPrice }, shopify_response: priceRes });
+  }
 }
