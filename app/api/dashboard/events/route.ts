@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { logEmitter, LogEvent, QueueEvent } from '@/lib/services/emitter';
 
 export const dynamic = 'force-dynamic';
@@ -17,11 +18,8 @@ function sanitize(event: LogEvent | QueueEvent): Record<string, unknown> {
 }
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get('dash_token')?.value;
-
-  if (!token) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
 
   const stream = new ReadableStream({
     start(controller) {

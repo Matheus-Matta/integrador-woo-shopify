@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import {
   LogProductModel,
   LogCustomerModel,
@@ -10,6 +11,9 @@ import {
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
+
   await connectMongo();
   const searchParams = req.nextUrl.searchParams;
   const type = searchParams.get('type') ?? 'order';

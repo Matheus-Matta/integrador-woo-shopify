@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { runWebhookSync } from '@/lib/services/webhooksManager';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
+
   try {
     const body = await req.json().catch(() => ({}));
     const platforms = body.platforms ?? ['shopify', 'woocommerce'];

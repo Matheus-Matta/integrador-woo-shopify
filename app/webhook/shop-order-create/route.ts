@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       void logError({ 
         flow: 'shop-order-create', 
         error_message: 'HMAC inválido (tentativa em /webhook/shop-order-create)', 
-        payload: { sig: sig || '(vazio)', ip, deliveryId, topic } 
+        payload: { sigPresent: Boolean(sig), sigLen: sig.length, ip, deliveryId, topic } 
       });
       return NextResponse.json({ error: 'Assinatura invalida' }, { status: 401 });
     }
@@ -48,7 +48,9 @@ export async function POST(req: NextRequest) {
         status: 'success'
     });
 
-    const job = await ordersQueue.add('shop-order-create', order);
+    const job = await ordersQueue.add('shop-order-create', order, {
+      jobId: `shop-order-create:${shopifyOrderId}`,
+    });
     console.log(`[Webhook] 🚀 Job enfileirado na BullMQ: ${job.id}`);
 
     return NextResponse.json({ 

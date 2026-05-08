@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { runSyncCheck, runDailySync } from '../../../../../lib/scheduler/syncChecker';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireDashboardAuth(request);
+  if (auth) return auth;
+
   try {
     const { type } = await request.json();
 

@@ -20,40 +20,93 @@ function ensure_url(url: string | undefined, fallback: string): URL {
 
 // ─── Crypto Utilities ───
 
-const ALGORITHM = 'aes-256-cbc';
+const LEGACY_ALGORITHM = 'aes-256-cbc';
+const ALGORITHM = 'aes-256-gcm';
+const GCM_PREFIX = 'v1';
+const decryptWarnings = new Set<string>();
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.DASHBOARD_JWT_SECRET || 'fallback_secret_integrador_woo_shopify';
+  const secret = process.env.CONFIG_ENCRYPTION_KEY || process.env.DASHBOARD_JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CONFIG_ENCRYPTION_KEY ou DASHBOARD_JWT_SECRET deve ser definido em producao.');
+    }
+    return crypto.createHash('sha256').update('dev_only_config_encryption_key').digest();
+  }
   return crypto.createHash('sha256').update(String(secret)).digest();
 }
 
 function encrypt(text: string): string {
   if (!text) return text;
   try {
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv(ALGORITHM, getEncryptionKey(), iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
-    return `${iv.toString('hex')}:${encrypted}`;
+    const tag = cipher.getAuthTag().toString('hex');
+    return `${GCM_PREFIX}:${iv.toString('hex')}:${tag}:${encrypted}`;
   } catch (err) {
     console.error('[Config] Error encrypting string');
     return text;
   }
 }
 
+function warnDecryptOnce(kind: string) {
+  if (process.env.DEBUG_CONFIG_DECRYPT !== 'true') return;
+  if (decryptWarnings.has(kind)) return;
+  decryptWarnings.add(kind);
+  console.error(`[Config] Error decrypting ${kind}. Keeping stored value as-is.`);
+}
+
+function isHex(value: string, bytes?: number): boolean {
+  if (!/^[a-f0-9]+$/i.test(value)) return false;
+  return bytes ? value.length === bytes * 2 : value.length % 2 === 0;
+}
+
 function decrypt(text: string): string {
   if (!text || !text.includes(':')) return text;
   try {
-    const [ivHex, encryptedHex] = text.split(':');
+    const parts = text.split(':');
+    if (parts[0] === GCM_PREFIX) {
+      const [, ivHex, tagHex, encryptedHex] = parts;
+      if (!isHex(ivHex, 12) || !isHex(tagHex, 16) || !isHex(encryptedHex)) return text;
+      const decipher = crypto.createDecipheriv(ALGORITHM, getEncryptionKey(), Buffer.from(ivHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+      let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    }
+
+    const [ivHex, encryptedHex] = parts;
+    if (!isHex(ivHex, 16) || !isHex(encryptedHex)) return text;
     const iv = Buffer.from(ivHex, 'hex');
-    const decipher = crypto.createDecipheriv(ALGORITHM, getEncryptionKey(), iv);
+    const decipher = crypto.createDecipheriv(LEGACY_ALGORITHM, getEncryptionKey(), iv);
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (err) {
-    console.error('[Config] Error decrypting string');
+    warnDecryptOnce(text.startsWith(`${GCM_PREFIX}:`) ? 'config secret' : 'legacy config secret');
     return text;
   }
+}
+
+function looksEncrypted(text: string): boolean {
+  const parts = text.split(':');
+  if (parts[0] === GCM_PREFIX) {
+    const [, ivHex, tagHex, encryptedHex] = parts;
+    return Boolean(isHex(ivHex, 12) && isHex(tagHex, 16) && isHex(encryptedHex));
+  }
+  const [ivHex, encryptedHex] = parts;
+  return Boolean(parts.length === 2 && isHex(ivHex, 16) && isHex(encryptedHex));
+}
+
+function decryptSecret(value: string | undefined, envKey: string): string {
+  const raw = value || '';
+  if (!raw) return process.env[envKey] || '';
+  const decrypted = decrypt(raw);
+  if (decrypted !== raw) return decrypted;
+  if (looksEncrypted(raw) && process.env[envKey]) return process.env[envKey] || '';
+  return decrypted;
 }
 
 // ─── Dynamic Config Management ───
@@ -94,14 +147,14 @@ function loadConfig() {
       dynamicConfig = {
         shopify: {
           url: rawConfig.shopify?.url || '',
-          accessToken: decrypt(rawConfig.shopify?.accessToken || ''),
-          webhookSecret: decrypt(rawConfig.shopify?.webhookSecret || ''),
+          accessToken: decryptSecret(rawConfig.shopify?.accessToken, 'SHOPIFY_ACCESS_TOKEN'),
+          webhookSecret: decryptSecret(rawConfig.shopify?.webhookSecret, 'SHOPIFY_WEBHOOK_SECRET'),
         },
         woo: {
           url: rawConfig.woo?.url || '',
-          key: decrypt(rawConfig.woo?.key || ''),
-          secret: decrypt(rawConfig.woo?.secret || ''),
-          webhookSecret: decrypt(rawConfig.woo?.webhookSecret || ''),
+          key: decryptSecret(rawConfig.woo?.key, 'WOO_KEY'),
+          secret: decryptSecret(rawConfig.woo?.secret, 'WOO_SECRET'),
+          webhookSecret: decryptSecret(rawConfig.woo?.webhookSecret, 'WOO_WEBHOOK_SECRET'),
         },
         domain: rawConfig.domain || '',
         scheduler: {

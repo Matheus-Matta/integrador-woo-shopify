@@ -21,9 +21,16 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  // Protege APIs operacionais do dashboard; a validacao JWT completa acontece nas rotas.
+  if (pathname.startsWith('/api/dashboard')) {
+    if (!token) {
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login'],
+  matcher: ['/dashboard/:path*', '/api/dashboard/:path*', '/login'],
 };

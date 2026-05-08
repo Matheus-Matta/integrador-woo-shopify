@@ -14,7 +14,8 @@
 import { redis } from '../db/redis';
 
 const DELIVERY_TTL = 60 * 60 * 24; // 24 h — cobre qualquer retry da Shopify
-const ORDER_TTL    = 60 * 10;      // 10 min — cobre janela create→paid do cartão/boleto
+const ORDER_TTL    = 60 * 10;      // 10 min — cobre updates/produtos em rajada
+const CREATE_ORDER_TTL = 60 * 60 * 24 * 7; // create deve ser idempotente por mais tempo
 
 /**
  * Tenta marcar o delivery-id como processado.
@@ -36,6 +37,7 @@ export async function deduplicateDelivery(deliveryId: string): Promise<boolean> 
  */
 export async function deduplicateOrder(flow: string, orderId: string): Promise<boolean> {
   const key = `wh:ord:${flow}:${orderId}`;
-  const result = await redis.set(key, '1', 'EX', ORDER_TTL, 'NX');
+  const ttl = flow === 'shop-order-create' ? CREATE_ORDER_TTL : ORDER_TTL;
+  const result = await redis.set(key, '1', 'EX', ttl, 'NX');
   return result === 'OK';
 }

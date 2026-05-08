@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { config, updateDynamicConfig } from '@/lib/config';
 import { restartSyncScheduler } from '@/lib/scheduler/syncChecker';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
+
   try {
     return NextResponse.json({
       active: config.scheduler.active,
@@ -17,7 +21,10 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireDashboardAuth(request);
+  if (auth) return auth;
+
   try {
     const body = await request.json();
     

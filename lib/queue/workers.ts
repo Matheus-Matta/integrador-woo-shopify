@@ -69,7 +69,7 @@ const ordersWorker = new Worker(
         throw new Error(`Job desconhecido na fila orders: ${job.name}`);
     }
   },
-  { connection, concurrency: 3 },
+  { connection, concurrency: 1 },
 );
 
 // ─── Worker Fila 2: products (concurrency=1 = sequencial) ─────────────────
@@ -97,7 +97,7 @@ const productsWorker = new Worker(
         throw new Error(`Job desconhecido na fila products: ${job.name}`);
     }
   },
-  { connection, concurrency: 3 },
+  { connection, concurrency: 1 },
 );
 
 // ─── Eventos dos workers ───────────────────────────────────────────────────

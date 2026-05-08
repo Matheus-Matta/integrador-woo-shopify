@@ -1,10 +1,12 @@
 {
   "name": "frontend",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "private": true,
   "scripts": {
     "dev": "npx kill-port 3005 && next dev -p 3005",
     "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck",
     "start": "next start"
   },
   "dependencies": {

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       void logError({ 
         flow: 'shop-order-update', 
         error_message: 'HMAC inválido (tentativa em /webhook/shop-order-update)', 
-        payload: { sig: sig || '(vazio)', ip, deliveryId, topic } 
+        payload: { sigPresent: Boolean(sig), sigLen: sig.length, ip, deliveryId, topic } 
       });
       return NextResponse.json({ error: 'Assinatura invalida' }, { status: 401 });
     }

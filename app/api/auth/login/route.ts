@@ -3,11 +3,17 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { config } from '@/lib/config';
 
+function safeSecretEquals(input: string, expected: string): boolean {
+  const inputHash = crypto.createHash('sha256').update(input).digest();
+  const expectedHash = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(inputHash, expectedHash);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { password } = await req.json();
 
-    if (!password || password !== config.dashboard.password) {
+    if (typeof password !== 'string' || !safeSecretEquals(password, config.dashboard.password)) {
       return NextResponse.json({ error: 'Senha incorreta' }, { status: 401 });
     }
 
@@ -23,6 +29,7 @@ export async function POST(req: NextRequest) {
     response.cookies.set('dash_token', token, {
       httpOnly: true,
       sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
       path: '/',
       maxAge: 8 * 60 * 60,
     });

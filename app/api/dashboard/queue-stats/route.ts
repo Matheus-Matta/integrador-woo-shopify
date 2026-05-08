@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { ordersQueue, productsQueue } from '@/lib/queue/queues';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
+
   try {
     const [orderCounts, productCounts] = await Promise.all([
       ordersQueue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed'),

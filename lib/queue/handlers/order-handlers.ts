@@ -10,6 +10,7 @@ import {
   createCustomer,
   updateCustomer,
   findWooOrderByShopifyId,
+  findWooOrderByShopifyIdGlobal,
   createOrder,
   updateOrder,
   WooOrder,
@@ -31,6 +32,7 @@ import {
   money,
   lower,
   arrayOf,
+  compactObject,
   mapStatus,
   getPaymentData,
   buildLineItems,
@@ -59,7 +61,7 @@ async function ensureCouponsForOrder(
     .filter((d) => d && d.code)
     .map((d) => ({
       code: String(d.code || '').trim(),
-      amount: String(d.amount ?? '0'),
+      amount: s(d.amount),
       type: String(d.type || '').toLowerCase(),
     }));
 
@@ -68,7 +70,7 @@ async function ensureCouponsForOrder(
     .filter((a) => a && a.code)
     .map((a) => ({
       code: String(a.code || '').trim(),
-      amount: String(a.value ?? '0'),
+      amount: s(a.value),
       type: String(a.value_type || a.type || '').toLowerCase(),
     }));
 
@@ -85,10 +87,14 @@ async function ensureCouponsForOrder(
     if (!code) continue;
     const rawType = (type || '').toLowerCase();
     const discount_type = rawType === 'percentage' ? 'percent' : 'fixed_cart';
-    const amt = String(amount ?? '0');
+    const amt = s(amount);
 
     const existing = await getCouponByCode(instance, code);
     if (!existing) {
+      if (!amt) {
+        console.warn(`[coupons] Cupom ${code} sem valor no payload Shopify — prosseguindo sem aplicar`);
+        continue;
+      }
       try {
         await createCoupon(instance, {
           code,
@@ -105,6 +111,35 @@ async function ensureCouponsForOrder(
   }
 
   return couponLines;
+}
+
+function hasPaymentSignal(order: Record<string, unknown>): boolean {
+  const terms = (order?.payment_terms as Record<string, unknown>) ?? {};
+  const gatewayNames = arrayOf(order?.payment_gateway_names).map(s).filter(Boolean);
+  const directGateway = s(order?.gateway);
+  const hasSpecificGateway = [...gatewayNames, directGateway]
+    .filter(Boolean)
+    .some((gateway) => lower(gateway) !== 'manual');
+
+  return Boolean(
+    hasSpecificGateway ||
+    s(order?.payment_method) ||
+    s(order?.payment_method_title) ||
+    s(terms?.payment_terms_name) ||
+    s(terms?.payment_terms_type)
+  );
+}
+
+function shouldFetchFullShopifyOrder(order: Record<string, unknown>): boolean {
+  return (
+    s(order?.source) === 'scheduler-audit' ||
+    !arrayOf(order?.line_items).length ||
+    !hasPaymentSignal(order)
+  );
+}
+
+function cleanMetaData<T extends { value: unknown }>(items: T[]): T[] {
+  return items.filter((item) => s(item.value) !== '');
 }
 
 // ─── shop-customer-create ──────────────────────────────────────────────────
@@ -127,33 +162,33 @@ export async function handleShopCustomerCreate(order: Record<string, unknown>): 
   const lastName = s(customer?.last_name ?? bill?.last_name ?? defAddr?.last_name);
   const phone = digits(s(defAddr?.phone ?? bill?.phone ?? ship?.phone));
 
-  const payload: Record<string, unknown> = {
+  const payload: Record<string, unknown> = compactObject({
     email,
     first_name: firstName,
     last_name: lastName,
-    billing: {
-      first_name: firstName, last_name: lastName, company: '',
+    billing: compactObject({
+      first_name: firstName, last_name: lastName,
       address_1: s(bill?.address1 ?? defAddr?.address1),
       address_2: s(bill?.address2 ?? defAddr?.address2),
       city: s(bill?.city ?? defAddr?.city),
-      state: s(bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+      state: s(bill?.province_code ?? defAddr?.province_code),
       postcode: s(bill?.zip ?? defAddr?.zip),
-      country: s(bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+      country: s(bill?.country_code ?? defAddr?.country_code),
       email, phone, cpf: digits(cpf) || cpf,
-    },
-    shipping: {
-      first_name: s(ship?.first_name ?? bill?.first_name ?? firstName),
-      last_name: s(ship?.last_name ?? bill?.last_name ?? lastName), company: '',
+    }),
+    shipping: compactObject({
+      first_name: s(ship?.first_name ?? bill?.first_name),
+      last_name: s(ship?.last_name ?? bill?.last_name),
       address_1: s(ship?.address1 ?? bill?.address1 ?? defAddr?.address1),
       address_2: s(ship?.address2 ?? bill?.address2 ?? defAddr?.address2),
       city: s(ship?.city ?? bill?.city ?? defAddr?.city),
-      state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+      state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code),
       postcode: s(ship?.zip ?? bill?.zip ?? defAddr?.zip),
-      country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+      country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code),
       phone,
-    },
+    }),
     meta_data: cpf ? [{ key: 'billing_cpf', value: digits(cpf) || cpf }] : [],
-  };
+  });
 
   const created = await createCustomer('starchats', payload);
   await logCustomer({ email, woo_customer_id: created.id, woo_instance: 'starchats', action: 'create', webhook: order, payload, response: created, status: 'success' });
@@ -185,34 +220,34 @@ export async function handleShopCustomerUpdate(order: Record<string, unknown>): 
   const lastName = s(customer?.last_name ?? bill?.last_name ?? defAddr?.last_name);
   const phone = digits(s(defAddr?.phone ?? bill?.phone ?? ship?.phone));
 
-  const payload: Record<string, unknown> = {
+  const payload: Record<string, unknown> = compactObject({
     email, first_name: firstName, last_name: lastName,
-    billing: {
-      first_name: firstName, last_name: lastName, company: '',
+    billing: compactObject({
+      first_name: firstName, last_name: lastName,
       address_1: s(bill?.address1 ?? defAddr?.address1),
       address_2: s(bill?.address2 ?? defAddr?.address2),
       city: s(bill?.city ?? defAddr?.city),
-      state: s(bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+      state: s(bill?.province_code ?? defAddr?.province_code),
       postcode: s(bill?.zip ?? defAddr?.zip),
-      country: s(bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+      country: s(bill?.country_code ?? defAddr?.country_code),
       email, phone, cpf: digits(cpf) || cpf,
-    },
-    shipping: {
-      first_name: s(ship?.first_name ?? bill?.first_name ?? firstName),
-      last_name: s(ship?.last_name ?? bill?.last_name ?? lastName), company: '',
+    }),
+    shipping: compactObject({
+      first_name: s(ship?.first_name ?? bill?.first_name),
+      last_name: s(ship?.last_name ?? bill?.last_name),
       address_1: s(ship?.address1 ?? bill?.address1 ?? defAddr?.address1),
       address_2: s(ship?.address2 ?? bill?.address2 ?? defAddr?.address2),
       city: s(ship?.city ?? bill?.city ?? defAddr?.city),
-      state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+      state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code),
       postcode: s(ship?.zip ?? bill?.zip ?? defAddr?.zip),
-      country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+      country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code),
       phone,
-    },
-    meta_data: [
+    }),
+    meta_data: cleanMetaData([
       { key: 'customer_id', value: s(order?.id ?? '') },
       ...(cpf ? [{ key: 'billing_cpf', value: digits(cpf) || cpf }] : []),
-    ],
-  };
+    ]),
+  });
 
   const updated = await updateCustomer('starchats', existing.id, payload);
   await logCustomer({ email, woo_customer_id: updated.id, woo_instance: 'starchats', action: 'update', webhook: order, payload, response: updated, status: 'success' });
@@ -222,10 +257,10 @@ export async function handleShopCustomerUpdate(order: Record<string, unknown>): 
 
 export async function handleShopOrderCreate(order: Record<string, unknown>): Promise<void> {
   let shopifyOrderId = String(order?.id ?? '');
-  const isPartial = !arrayOf(order?.line_items).length;
+  const isPartial = shouldFetchFullShopifyOrder(order);
   
   if (isPartial && shopifyOrderId) {
-    console.log(`[shop-order-create] Payload parcial detectado para ${shopifyOrderId}. Buscando dados completos na Shopify...`);
+    console.log(`[shop-order-create] Payload incompleto detectado para ${shopifyOrderId}. Buscando dados completos na Shopify...`);
     order = await getFullShopifyOrder(shopifyOrderId);
   }
 
@@ -233,6 +268,13 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   shopifyOrderId = String(order?.id ?? '');
 
   if (!email || !shopifyOrderId) throw new Error('email e id do pedido são obrigatórios');
+
+  const globalExistingOrder = await findWooOrderByShopifyIdGlobal('starseguro', shopifyOrderId);
+  if (globalExistingOrder) {
+    console.log(`[shop-order-create] Pedido Shopify ${shopifyOrderId} ja existe no Woo (id=${globalExistingOrder.id}) - ignorando criacao duplicada`);
+    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: globalExistingOrder.id, woo_instance: 'starseguro', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
+    return;
+  }
 
   // ── Idempotência: verifica se o pedido já existe no Woo ───────────────────
   // Garante que dois webhooks orders/create (pending + paid) não criem dois
@@ -260,30 +302,30 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
     const lastName = s(shopCust?.last_name ?? bill?.last_name ?? defAddr?.last_name);
     const phone = digits(s(defAddr?.phone ?? bill?.phone ?? ship?.phone));
 
-    const customerPayload: Record<string, unknown> = {
+    const customerPayload: Record<string, unknown> = compactObject({
       email, first_name: firstName, last_name: lastName,
-      billing: {
+      billing: compactObject({
         first_name: firstName, last_name: lastName,
         address_1: s(bill?.address1 ?? defAddr?.address1),
         address_2: s(bill?.address2 ?? defAddr?.address2),
         city: s(bill?.city ?? defAddr?.city),
-        state: s(bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+        state: s(bill?.province_code ?? defAddr?.province_code),
         postcode: s(bill?.zip ?? defAddr?.zip),
-        country: s(bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+        country: s(bill?.country_code ?? defAddr?.country_code),
         email, phone,
-      },
-      shipping: {
-        first_name: s(ship?.first_name ?? bill?.first_name ?? firstName),
-        last_name: s(ship?.last_name ?? bill?.last_name ?? lastName),
+      }),
+      shipping: compactObject({
+        first_name: s(ship?.first_name ?? bill?.first_name),
+        last_name: s(ship?.last_name ?? bill?.last_name),
         address_1: s(ship?.address1 ?? bill?.address1 ?? defAddr?.address1),
         address_2: s(ship?.address2 ?? bill?.address2 ?? defAddr?.address2),
         city: s(ship?.city ?? bill?.city ?? defAddr?.city),
-        state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+        state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code),
         postcode: s(ship?.zip ?? bill?.zip ?? defAddr?.zip),
-        country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+        country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code),
         email, phone,
-      },
-    };
+      }),
+    });
 
     try {
       const created = await createCustomer('starchats', customerPayload);
@@ -307,9 +349,9 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   const shippingNeighborhood = getNeighborhoodFromShopify(order, ship) || billingNeighborhood;
   const paymentData = getPaymentData(order);
 
-  const meta_data = [
+  const meta_data = cleanMetaData([
     { key: '_shopify_order_id', value: shopifyOrderId },
-    { key: '_shopify_order_number', value: String(order?.order_number ?? '') },
+    { key: '_shopify_order_number', value: s(order?.order_number) },
     { key: '_shopify_name', value: s(order?.name) },
     { key: '_shopify_order_url', value: s(order?.order_status_url) },
     { key: '_shopify_financial_status', value: s(order?.financial_status) },
@@ -322,16 +364,16 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
       key: '_shopify_coupon_codes', 
       value: arrayOf<{ code: string }>(order?.discount_codes).map(c => c.code).join(', ') 
     },
-  ];
+  ]);
   const couponLines = await ensureCouponsForOrder('starseguro', order);
 
-  const payload: Record<string, unknown> = {
+  const payload: Record<string, unknown> = compactObject({
     status: mapStatus(order),
-    currency: s(order?.currency ?? order?.presentment_currency ?? 'BRL'),
+    currency: s(order?.currency ?? order?.presentment_currency),
     ...(paymentData ?? {}),
     transaction_id: shopifyOrderId,
     customer_id: wooCustomer?.id,
-    billing: {
+    billing: compactObject({
       first_name: s(bill?.first_name), last_name: s(bill?.last_name),
       company: s(bill?.company), address_1: s(bill?.address1), address_2: s(bill?.address2),
       city: s(bill?.city), state: s(bill?.province_code), postcode: s(bill?.zip),
@@ -339,8 +381,8 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
       ...(cpfFinal ? { persontype: '1', cpf: cpfFinal } : {}),
       ...(billingNumber ? { number: billingNumber } : {}),
       ...(billingNeighborhood ? { neighborhood: billingNeighborhood } : {}),
-    },
-    shipping: {
+    }),
+    shipping: compactObject({
       first_name: s(ship?.first_name ?? bill?.first_name),
       last_name: s(ship?.last_name ?? bill?.last_name),
       company: s(ship?.company),
@@ -349,7 +391,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
       postcode: s(ship?.zip ?? bill?.zip), country: s(ship?.country_code ?? bill?.country_code),
       ...(shippingNumber ? { number: shippingNumber } : {}),
       ...(shippingNeighborhood ? { neighborhood: shippingNeighborhood } : {}),
-    },
+    }),
     // Itens e cupons: se houver discount_codes, garantimos o cupom no Woo e
     // deixamos o Woo calcular o desconto via coupon_lines (sem duplicar allocations).
     line_items: couponLines.length > 0 ? buildLineItemsForCoupons(order) : buildLineItems(order),
@@ -357,7 +399,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
     coupon_lines: couponLines,
     meta_data,
     customer_note: s(order?.note),
-  };
+  });
 
   try {
     const created = await createOrder('starseguro', payload);
@@ -412,14 +454,14 @@ function buildOrderPayload(
   const deliveryType = getDeliveryTypeFromShopify(order);
   const paymentData = getPaymentData(order);
 
-  const meta_data = [
+  const meta_data = cleanMetaData([
     { key: '_billing_cpf', value: cpfFinal }, { key: '_billing_persontype', value: '1' },
     { key: '_billing_number', value: billingNumber }, { key: '_billing_neighborhood', value: billingNeighborhood },
     { key: '_shipping_number', value: shippingNumber }, { key: '_shipping_neighborhood', value: shippingNeighborhood },
     { key: '_shopify_financial_status', value: s(order?.financial_status) },
     { key: '_shopify_name', value: s(order?.name) },
     { key: '_shopify_order_id', value: shopifyOrderId },
-    { key: '_shopify_order_number', value: String(order?.order_number ?? '') },
+    { key: '_shopify_order_number', value: s(order?.order_number) },
     { key: '_shopify_order_url', value: s(order?.order_status_url) },
     { key: '_shopify_updated_at', value: s(order?.updated_at ?? order?.processed_at ?? order?.created_at) },
     { key: 'delivery_date', value: deliveryDate },
@@ -428,7 +470,7 @@ function buildOrderPayload(
       key: '_shopify_coupon_codes', 
       value: arrayOf<{ code: string }>(order?.discount_codes).map(c => c.code).join(', ') 
     },
-  ].filter((item) => s(item.value) !== '');
+  ]);
 
   // Só sobrescreve billing/shipping se o webhook trouxer endereço preenchido.
   // Webhooks orders/updated do Shopify às vezes omitem billing_address/shipping_address,
@@ -436,30 +478,30 @@ function buildOrderPayload(
   const isBillingPresent = Boolean(s(bill?.first_name) || s(bill?.address1));
   const isShippingPresent = Boolean(s(ship?.first_name) || s(ship?.address1));
 
-  return {
+  return compactObject({
     status: mapStatus(order),
-    currency: s(order?.currency ?? order?.presentment_currency ?? 'BRL'),
+    currency: s(order?.currency ?? order?.presentment_currency),
     ...(paymentData ?? {}),
     transaction_id: shopifyOrderId,
     customer_id: customerId,
     ...(isBillingPresent ? {
-      billing: {
+      billing: compactObject({
         first_name: s(bill?.first_name), last_name: s(bill?.last_name),
         company: s(bill?.company), address_1: s(bill?.address1), address_2: s(bill?.address2),
         city: s(bill?.city), state: s(bill?.province_code), postcode: s(bill?.zip),
         country: s(bill?.country_code), email, phone: s(bill?.phone ?? order?.phone),
         persontype: '1', cpf: cpfFinal, number: billingNumber, neighborhood: billingNeighborhood,
-      },
+      }),
     } : {}),
     ...(isShippingPresent ? {
-      shipping: {
+      shipping: compactObject({
         first_name: s(ship?.first_name ?? bill?.first_name), last_name: s(ship?.last_name ?? bill?.last_name),
         company: s(ship?.company),
         address_1: s(ship?.address1 ?? bill?.address1), address_2: s(ship?.address2 ?? bill?.address2),
         city: s(ship?.city ?? bill?.city), state: s(ship?.province_code ?? bill?.province_code),
         postcode: s(ship?.zip ?? bill?.zip), country: s(ship?.country_code ?? bill?.country_code),
         number: shippingNumber, neighborhood: shippingNeighborhood,
-      },
+      }),
     } : {}),
     line_items: (() => {
       const applyCoupons = (couponLines && couponLines.length > 0);
@@ -476,17 +518,17 @@ function buildOrderPayload(
     coupon_lines: couponLines && couponLines.length > 0 ? couponLines : buildCoupons(order),
     meta_data,
     customer_note: s(order?.note),
-  };
+  });
 }
 
 // ─── shop-order-update ─────────────────────────────────────────────────────
 
 export async function handleShopOrderUpdate(order: Record<string, unknown>): Promise<void> {
   let shopifyOrderId = String(order?.id ?? '');
-  const isPartial = !arrayOf(order?.line_items).length || !arrayOf(order?.payment_gateway_names).length;
+  const isPartial = shouldFetchFullShopifyOrder(order);
 
   if (isPartial && shopifyOrderId) {
-    console.log(`[shop-order-update] Payload parcial detectado para ${shopifyOrderId}. Buscando dados completos na Shopify...`);
+    console.log(`[shop-order-update] Payload incompleto detectado para ${shopifyOrderId}. Buscando dados completos na Shopify...`);
     order = await getFullShopifyOrder(shopifyOrderId);
   }
 
@@ -511,31 +553,31 @@ export async function handleShopOrderUpdate(order: Record<string, unknown>): Pro
     const lastName = s(shopCust?.last_name ?? bill?.last_name ?? defAddr?.last_name);
     const phone = digits(s(defAddr?.phone ?? bill?.phone ?? ship?.phone));
 
-    const customerPayload: Record<string, unknown> = {
+    const customerPayload: Record<string, unknown> = compactObject({
       email, first_name: firstName, last_name: lastName,
-      billing: {
+      billing: compactObject({
         first_name: firstName, last_name: lastName,
         address_1: s(bill?.address1 ?? defAddr?.address1),
         address_2: s(bill?.address2 ?? defAddr?.address2),
         city: s(bill?.city ?? defAddr?.city),
-        state: s(bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+        state: s(bill?.province_code ?? defAddr?.province_code),
         postcode: s(bill?.zip ?? defAddr?.zip),
-        country: s(bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+        country: s(bill?.country_code ?? defAddr?.country_code),
         email, phone,
-      },
-      shipping: {
-        first_name: s(ship?.first_name ?? bill?.first_name ?? firstName),
-        last_name: s(ship?.last_name ?? bill?.last_name ?? lastName),
+      }),
+      shipping: compactObject({
+        first_name: s(ship?.first_name ?? bill?.first_name),
+        last_name: s(ship?.last_name ?? bill?.last_name),
         address_1: s(ship?.address1 ?? bill?.address1 ?? defAddr?.address1),
         address_2: s(ship?.address2 ?? bill?.address2 ?? defAddr?.address2),
         city: s(ship?.city ?? bill?.city ?? defAddr?.city),
-        state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code ?? 'RJ'),
+        state: s(ship?.province_code ?? bill?.province_code ?? defAddr?.province_code),
         postcode: s(ship?.zip ?? bill?.zip ?? defAddr?.zip),
-        country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code ?? 'BR'),
+        country: s(ship?.country_code ?? bill?.country_code ?? defAddr?.country_code),
         phone,
-      },
+      }),
       meta_data: cpfFromShopify ? [{ key: 'billing_cpf', value: digits(cpfFromShopify) || cpfFromShopify }] : [],
-    };
+    });
 
     try {
       const created = await createCustomer('starchats', customerPayload);
@@ -617,6 +659,23 @@ export async function handleShopOrderUpdate(order: Record<string, unknown>): Pro
       ensuredCoupons,
     );
     try {
+      const globalExistingOrder = await findWooOrderByShopifyIdGlobal('starchats', shopifyOrderId);
+      if (globalExistingOrder) {
+        const updated = await updateOrder('starchats', globalExistingOrder.id, payload);
+        await logOrder({
+          shopify_order_id: shopifyOrderId,
+          shopify_order_name: s(order?.name),
+          woo_order_id: updated.id,
+          woo_instance: 'starchats',
+          action: 'update_existing_found_globally',
+          webhook: order,
+          payload,
+          response: updated,
+          status: 'success',
+        });
+        return;
+      }
+
       const created = await createOrder('starchats', payload);
       await logOrder({
         shopify_order_id: shopifyOrderId,
@@ -673,7 +732,7 @@ export async function handleWooOrderUpdate(body: Record<string, unknown>): Promi
   const deliveryType = lower(findMeta('delivery_type'));
   const deliveryDate = findMeta('delivery_date');
   const paymentText = `${s(body?.payment_method)} ${s(body?.payment_method_title)}`.toLowerCase();
-  const isCOD = /cash on delivery|\bcod\b|pagamento na entrega/.test(paymentText);
+  const isCOD = /cash on delivery|\bcod\b|pagamento na entrega|na entrega|cartão na entrega|cartao na entrega/.test(paymentText);
   const wooOrderId = Number(body?.id);
 
   const ordDetails = await getOrderDetails(shopifyOrderGid);

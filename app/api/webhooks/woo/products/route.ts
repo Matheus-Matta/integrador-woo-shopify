@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { verifyWooHmac } from '@/lib/utils/webhook-validator';
 import { productsQueue } from '@/lib/queue/queues';
 import { logError } from '@/lib/services/logger';
 import { deduplicateDelivery, deduplicateOrder } from '@/lib/services/webhookDedup';
 
 export async function GET(req: NextRequest) {
-  if (!req.cookies.get('dash_token')?.value) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
   return NextResponse.json({
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     if (!verifyWooHmac(buffer, sig)) {
       console.warn(`[woo-product] ⚠️ HMAC inválido — rejeitado IP: ${ip}`);
-      void logError({ flow: 'woo-product', error_message: 'HMAC inválido', payload: { sig: sig ?? '(vazio)', ip } });
+      void logError({ flow: 'woo-product', error_message: 'HMAC inválido', payload: { sigPresent: Boolean(sig), sigLen: sig.length, ip } });
       return NextResponse.json({ error: 'Assinatura invalida' }, { status: 401 });
     }
 

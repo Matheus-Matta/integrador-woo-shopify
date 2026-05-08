@@ -156,6 +156,17 @@ export type WsEvent = WsLogEvent | WsQueueEvent | { type: 'error'; message: stri
 // ─── Config API ───────────────────────────────────────────────────────────────
 
 export interface DashboardConfig {
+  shopify: {
+    url: string;
+    accessToken: string;
+    webhookSecret: string;
+  };
+  woo: {
+    url: string;
+    key: string;
+    secret: string;
+    webhookSecret: string;
+  };
   domain: string | null;
   queueAttempts: number;
   queueBackoffMs: number;

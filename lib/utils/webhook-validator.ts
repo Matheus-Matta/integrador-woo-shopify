@@ -17,8 +17,7 @@ export function verifyShopifyHmac(rawBody: Buffer | string, signature: string): 
       rawBodyLen: rawBody.length,
       rawBodyEmpty: rawBody.length === 0,
       secretLen: config.shopify.webhookSecret.length,
-      computed: digest,
-      received: signature,
+      receivedLen: signature.length,
     });
   }
   return match;

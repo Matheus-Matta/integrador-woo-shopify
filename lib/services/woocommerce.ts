@@ -23,6 +23,17 @@ function getClient(_instance: WooInstance): AxiosInstance {
   return makeWooClient(config.woo.url, config.woo.key, config.woo.secret);
 }
 
+function summarizePayload(payload: object): Record<string, unknown> {
+  const data = payload as Record<string, unknown>;
+  return {
+    id: data.id,
+    email: data.email,
+    status: data.status,
+    customer_id: data.customer_id,
+    line_items_count: Array.isArray(data.line_items) ? data.line_items.length : undefined,
+  };
+}
+
 // ─── Tipos ─────────────────────────────────────────────────────────────────
 
 export interface WooCustomer {
@@ -38,6 +49,8 @@ export interface WooCustomer {
 export interface WooOrder {
   id: number;
   status: string;
+  transaction_id?: string;
+  customer_id?: number;
   meta_data?: { key: string; value: unknown }[];
   line_items?: {
     id: number;
@@ -96,7 +109,7 @@ export async function createCoupon(
     return data;
   } catch (err: any) {
     const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-    console.error(`[WooCommerce] Erro ao criar cupom: ${details}`, { payload });
+    console.error(`[WooCommerce] Erro ao criar cupom: ${details}`, { payload: summarizePayload(payload) });
     throw err;
   }
 }
@@ -132,7 +145,7 @@ export async function createCustomer(
     return data;
   } catch (err: any) {
     const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-    console.error(`[WooCommerce] Erro ao criar cliente: ${details}`, { payload });
+    console.error(`[WooCommerce] Erro ao criar cliente: ${details}`, { payload: summarizePayload(payload) });
     throw err;
   }
 }
@@ -149,7 +162,7 @@ export async function updateCustomer(
     return data;
   } catch (err: any) {
     const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-    console.error(`[WooCommerce] Erro ao atualizar cliente ${id}: ${details}`, { payload });
+    console.error(`[WooCommerce] Erro ao atualizar cliente ${id}: ${details}`, { payload: summarizePayload(payload) });
     throw err;
   }
 }
@@ -159,12 +172,20 @@ export async function updateCustomer(
 export async function getOrdersByCustomerId(
   instance: WooInstance,
   customerId: number,
+  page = 1,
+  perPage = 100,
 ): Promise<WooOrder[]> {
   const client = getClient(instance);
   const { data } = await client.get<WooOrder[]>('/wp-json/wc/v3/orders', {
-    params: { customer: customerId, orderby: 'date', order: 'desc', per_page: 50 },
+    params: { customer: customerId, orderby: 'date', order: 'desc', per_page: perPage, page },
   });
   return Array.isArray(data) ? data : [];
+}
+
+function orderMatchesShopifyId(order: WooOrder, shopifyOrderId: string): boolean {
+  if (String(order.transaction_id ?? '') === shopifyOrderId) return true;
+  const metas = Array.isArray(order.meta_data) ? order.meta_data : [];
+  return metas.some((m) => m.key === '_shopify_order_id' && String(m.value) === shopifyOrderId);
 }
 
 export async function findWooOrderByShopifyId(
@@ -172,14 +193,39 @@ export async function findWooOrderByShopifyId(
   customerId: number,
   shopifyOrderId: string,
 ): Promise<WooOrder | null> {
-  const orders = await getOrdersByCustomerId(instance, customerId);
-  for (const order of orders) {
-    const metas = Array.isArray(order.meta_data) ? order.meta_data : [];
-    const hit = metas.find(
-      (m) => m.key === '_shopify_order_id' && String(m.value) === shopifyOrderId,
-    );
-    if (hit) return order;
+  const perPage = 100;
+  for (let page = 1; page <= 10; page++) {
+    const orders = await getOrdersByCustomerId(instance, customerId, page, perPage);
+    const hit = orders.find((order) => orderMatchesShopifyId(order, shopifyOrderId));
+    if (hit) return hit;
+    if (orders.length < perPage) break;
   }
+  return null;
+}
+
+export async function findWooOrderByShopifyIdGlobal(
+  instance: WooInstance,
+  shopifyOrderId: string,
+): Promise<WooOrder | null> {
+  const client = getClient(instance);
+  const perPage = 100;
+
+  const searchCandidates = await client.get<WooOrder[]>('/wp-json/wc/v3/orders', {
+    params: { search: shopifyOrderId, orderby: 'date', order: 'desc', per_page: perPage },
+  }).then((res) => Array.isArray(res.data) ? res.data : []).catch(() => []);
+  const searchHit = searchCandidates.find((order) => orderMatchesShopifyId(order, shopifyOrderId));
+  if (searchHit) return searchHit;
+
+  for (let page = 1; page <= 20; page++) {
+    const { data } = await client.get<WooOrder[]>('/wp-json/wc/v3/orders', {
+      params: { orderby: 'date', order: 'desc', per_page: perPage, page },
+    });
+    const orders = Array.isArray(data) ? data : [];
+    const hit = orders.find((order) => orderMatchesShopifyId(order, shopifyOrderId));
+    if (hit) return hit;
+    if (orders.length < perPage) break;
+  }
+
   return null;
 }
 
@@ -189,12 +235,12 @@ export async function createOrder(
 ): Promise<WooOrder> {
   const client = getClient(instance);
   try {
-    console.log(`[WooCommerce] Criando pedido no Woo...`, { payload });
+    console.log(`[WooCommerce] Criando pedido no Woo...`, { payload: summarizePayload(payload) });
     const { data } = await client.post<WooOrder>('/wp-json/wc/v3/orders', payload);
     return data;
   } catch (err: any) {
     const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-    console.error(`[WooCommerce] Erro ao criar pedido: ${details}`, { payload });
+    console.error(`[WooCommerce] Erro ao criar pedido: ${details}`, { payload: summarizePayload(payload) });
     throw err;
   }
 }
@@ -206,12 +252,12 @@ export async function updateOrder(
 ): Promise<WooOrder> {
   const client = getClient(instance);
   try {
-    console.log(`[WooCommerce] Atualizando pedido ${orderId} no Woo...`, { payload });
+    console.log(`[WooCommerce] Atualizando pedido ${orderId} no Woo...`, { payload: summarizePayload(payload) });
     const { data } = await client.put<WooOrder>(`/wp-json/wc/v3/orders/${orderId}`, payload);
     return data;
   } catch (err: any) {
     const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-    console.error(`[WooCommerce] Erro ao atualizar pedido ${orderId}: ${details}`, { payload });
+    console.error(`[WooCommerce] Erro ao atualizar pedido ${orderId}: ${details}`, { payload: summarizePayload(payload) });
     throw err;
   }
 }

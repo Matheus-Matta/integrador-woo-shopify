@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { ordersQueue, productsQueue } from '@/lib/queue/queues';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ name: string }> }) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
+
   const { name } = await params;
 
   const queue = name === 'orders' ? ordersQueue : (name === 'products' ? productsQueue : null);

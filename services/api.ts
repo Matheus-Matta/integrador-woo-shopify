@@ -46,7 +46,7 @@ export async function login(password: string): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${BASE}/api/auth/logout`, { credentials: 'include' });
+  await fetch(`${BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
 }
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────

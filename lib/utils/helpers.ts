@@ -27,6 +27,31 @@ export function lower(v: unknown): string {
   return s(v).toLowerCase();
 }
 
+export function normalizeSearchText(v: unknown): string {
+  return lower(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+export function hasMeaningfulValue(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  if (typeof v === 'string') return v.trim() !== '';
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as Record<string, unknown>).length > 0;
+  return true;
+}
+
+export function compactObject<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const nested = compactObject(value as Record<string, unknown>);
+      if (hasMeaningfulValue(nested)) out[key] = nested;
+      continue;
+    }
+    if (hasMeaningfulValue(value)) out[key] = value;
+  }
+  return out;
+}
+
 // ─── Serviços (EPOFW) ──────────────────────────────────────────────────────
 
 export function hasServices(order: Record<string, unknown>): boolean {
@@ -144,9 +169,30 @@ export function getDeliveryTypeFromShopify(order: Record<string, unknown>): stri
 // ─── Status ────────────────────────────────────────────────────────────────
 
 export function isCashOnDelivery(order: Record<string, unknown>): boolean {
-  const gateways = arrayOf<string>(order?.payment_gateway_names).map(lower);
-  return gateways.some(
-    (g) => g.includes('cash on delivery') || g === 'cod' || g.includes('pagamento na entrega'),
+  const terms = (order?.payment_terms as Record<string, unknown>) ?? {};
+  const paymentTexts = [
+    ...arrayOf<string>(order?.payment_gateway_names),
+    order?.gateway,
+    order?.payment_method,
+    order?.payment_method_title,
+    order?.processing_method,
+    terms?.payment_terms_name,
+    terms?.payment_terms_type,
+  ].map(normalizeSearchText).filter(Boolean);
+
+  for (const attr of getNoteAttributes(order)) {
+    const key = normalizeSearchText(attr?.name ?? attr?.key ?? '');
+    if (/payment|pagamento|gateway|metodo|m[eé]todo/.test(key)) {
+      paymentTexts.push(normalizeSearchText(attr?.value));
+    }
+  }
+
+  return paymentTexts.some((text) =>
+    text.includes('cash on delivery') ||
+    text.includes('pagamento na entrega') ||
+    text.includes('cartao na entrega') ||
+    text.includes('cartao de credito na entrega') ||
+    /\bcod\b/.test(text)
   );
 }
 
@@ -171,8 +217,15 @@ export function getPaymentData(order: Record<string, unknown>): {
   // quando o cliente troca a forma de pagamento (ex.: cartão recusado → boleto/PIX).
   // O último item é sempre o método mais recente. `gateway` é usado como fallback
   // para pedidos onde o array não esteja presente.
+  const terms = (order?.payment_terms as Record<string, unknown>) ?? {};
   const names = arrayOf<string>(order?.payment_gateway_names);
-  const rawGateway = s(names[names.length - 1] ?? order?.gateway);
+  const rawGateway = s(
+    names[names.length - 1] ??
+    order?.gateway ??
+    order?.payment_method ??
+    order?.payment_method_title ??
+    terms?.payment_terms_name
+  );
   if (!rawGateway) return null;
   const gatewayLower = lower(rawGateway);
   const payment_method = gatewayLower.startsWith('appmax_')
@@ -491,14 +544,21 @@ interface ShopifyShippingLine {
   price_set?: { shop_money?: { amount: string } };
 }
 
+function shippingLineTitle(line: ShopifyShippingLine): string {
+  return s(line.title ?? line.code);
+}
+
+function shippingLineAmount(line: ShopifyShippingLine, fallback?: unknown): string {
+  const raw = line.price ?? line.price_set?.shop_money?.amount ?? fallback;
+  return hasMeaningfulValue(raw) ? money(raw) : '';
+}
+
 export function buildShippingLines(
   order: Record<string, unknown>,
   existingWooLines?: WooShippingLine[],
 ): Record<string, unknown>[] {
   const shopLines = arrayOf<ShopifyShippingLine>(order?.shipping_lines);
-  const totalShip = s(
-    (order?.total_shipping_price_set as Record<string, unknown>)?.shop_money,
-  );
+  const totalShip = (order?.total_shipping_price_set as { shop_money?: { amount?: string } })?.shop_money?.amount;
 
   if (existingWooLines && existingWooLines.length > 0) {
     const maxLen = Math.max(existingWooLines.length, shopLines.length);
@@ -507,45 +567,33 @@ export function buildShippingLines(
       const wooLine = existingWooLines[i];
       const shopLine = shopLines[i];
       if (wooLine && shopLine) {
-        const title = s(shopLine.title ?? 'Frete');
-        const price = money(
-          shopLine.price ??
-          shopLine.price_set?.shop_money?.amount ??
-          totalShip ??
-          '0',
-        );
-        lines.push({
+        const title = shippingLineTitle(shopLine);
+        const price = shippingLineAmount(shopLine, totalShip);
+        lines.push(compactObject({
           id: wooLine.id,
-          method_id: 'maxxxmoveis',
-          method_title: `${title} (R$ ${price})`,
+          method_id: s(shopLine.code ?? wooLine.method_id),
+          method_title: title && price ? `${title} (R$ ${price})` : title || s(wooLine.method_title),
           total: price,
-          total_tax: money(wooLine.total_tax ?? 0),
+          total_tax: hasMeaningfulValue(wooLine.total_tax) ? money(wooLine.total_tax) : undefined,
           taxes: arrayOf(wooLine.taxes),
-        });
+        }));
       } else if (wooLine) {
-        lines.push({
+        lines.push(compactObject({
           id: wooLine.id,
-          method_id: 'maxxxmoveis',
-          method_title: s(wooLine.method_title ?? 'Frete (R$ 0.00)'),
-          total: money(wooLine.total ?? '0'),
-          total_tax: '0.00',
-          taxes: [],
-        });
+          method_id: s(wooLine.method_id),
+          method_title: s(wooLine.method_title),
+          total: hasMeaningfulValue(wooLine.total) ? money(wooLine.total) : undefined,
+          total_tax: hasMeaningfulValue(wooLine.total_tax) ? money(wooLine.total_tax) : undefined,
+          taxes: arrayOf(wooLine.taxes),
+        }));
       } else if (shopLine) {
-        const title = s(shopLine.title ?? 'Frete');
-        const price = money(
-          shopLine.price ??
-          shopLine.price_set?.shop_money?.amount ??
-          totalShip ??
-          '0',
-        );
-        lines.push({
-          method_id: 'maxxxmoveis',
-          method_title: `${title} (R$ ${price})`,
+        const title = shippingLineTitle(shopLine);
+        const price = shippingLineAmount(shopLine, totalShip);
+        lines.push(compactObject({
+          method_id: s(shopLine.code),
+          method_title: title && price ? `${title} (R$ ${price})` : title,
           total: price,
-          total_tax: '0.00',
-          taxes: [],
-        });
+        }));
       }
     }
     // Evita duplicação de frete quando houver divergência entre linhas de frete existentes
@@ -567,19 +615,14 @@ export function buildShippingLines(
   }
 
   return shopLines.map((line) => {
-    const title = s(line.title ?? line.code ?? 'Frete');
-    const total = money(
-      line.price ??
-      line.price_set?.shop_money?.amount ??
-      totalShip ??
-      '0',
-    );
-    return {
-      method_id: 'maxxxmoveis',
-      method_title: `${title} (R$ ${total})`,
+    const title = shippingLineTitle(line);
+    const total = shippingLineAmount(line, totalShip);
+    return compactObject({
+      method_id: s(line.code),
+      method_title: title && total ? `${title} (R$ ${total})` : title,
       total,
-    };
-  });
+    });
+  }).filter((line) => hasMeaningfulValue(line));
 }
 
 export function buildCoupons(_order: Record<string, unknown>): { code: string }[] {

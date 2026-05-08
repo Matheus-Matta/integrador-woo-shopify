@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
+import { config } from '@/lib/config';
 import { denyJwt } from '@/lib/services/jwtDenylist';
 
 interface JwtPayload {
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     const token = req.cookies.get('dash_token')?.value;
 
     if (token) {
-      const decoded = jwt.decode(token) as JwtPayload;
+      const decoded = jwt.verify(token, config.dashboard.jwtSecret) as JwtPayload;
       if (decoded?.jti && decoded?.exp) {
         const ttlSeconds = decoded.exp - Math.floor(Date.now() / 1000);
         await denyJwt(decoded.jti, ttlSeconds);
@@ -23,7 +24,13 @@ export async function POST(req: NextRequest) {
   }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.delete('dash_token');
+  response.cookies.set('dash_token', '', {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
 
   return response;
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import { verifyShopifyHmac } from '@/lib/utils/webhook-validator';
 import { ordersQueue } from '@/lib/queue/queues';
 import { logError } from '@/lib/services/logger';
@@ -6,7 +7,8 @@ import { s, hasServices } from '@/lib/utils/helpers';
 import { deduplicateDelivery, deduplicateOrder } from '@/lib/services/webhookDedup';
 
 export async function GET(req: NextRequest) {
-  if (!req.cookies.get('dash_token')?.value) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
   return NextResponse.json({
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     if (!verifyShopifyHmac(rawBody, sig)) {
       console.warn(`[shop-order-create] ⚠️ HMAC inválido — rejeitado IP: ${ip}`);
-      void logError({ flow: 'shop-order-create', error_message: 'HMAC inválido', payload: { sig: sig ?? '(vazio)', ip } });
+      void logError({ flow: 'shop-order-create', error_message: 'HMAC inválido', payload: { sigPresent: Boolean(sig), sigLen: sig.length, ip } });
       return NextResponse.json({ error: 'Assinatura invalida' }, { status: 401 });
     }
 
@@ -58,7 +60,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ skipped: true, reason: 'duplicate-order' });
     }
 
-    const job = await ordersQueue.add('shop-order-create', order);
+    const job = await ordersQueue.add('shop-order-create', order, {
+      jobId: `shop-order-create:${shopifyOrderId}`,
+    });
     console.info(`[shop-order-create] ✅ enfileirado — jobId=${job.id} shopifyOrderId=${shopifyOrderId}`);
     return NextResponse.json({ queued: true, jobId: job.id, shopifyOrderId }, { status: 202 });
   } catch (err) {

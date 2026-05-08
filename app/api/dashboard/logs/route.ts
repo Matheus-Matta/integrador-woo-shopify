@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Model } from 'mongoose';
+import { requireDashboardAuth } from '@/lib/auth/dashboard';
 import {
   LogProductModel,
   LogCustomerModel,
@@ -62,6 +63,9 @@ function buildFilter(type: string, searchParams: URLSearchParams): Record<string
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireDashboardAuth(req);
+  if (auth) return auth;
+
   await connectMongo();
   const searchParams = req.nextUrl.searchParams;
   const type = searchParams.get('type') ?? 'order';
