@@ -24,7 +24,19 @@ interface LogFiltersProps {
 }
 
 const ACTION_OPTIONS: Record<LogType, string[]> = {
-  order: ['create', 'update', 'mark_paid', 'create_fulfillment', 'mark_delivered', 'update_skipped_not_completed'],
+  order: [
+    'create',
+    'update',
+    'mark_paid',
+    'create_fulfillment',
+    'mark_delivered',
+    'update_skipped_not_completed',
+    'webhook_rejected_hmac',
+    'webhook_rejected_missing_fields',
+    'webhook_skipped_duplicate_delivery',
+    'webhook_skipped_duplicate_payload',
+    'webhook_skipped_duplicate_order_window',
+  ],
   customer: ['create', 'update'],
   product: ['stock_update', 'price_update', 'title_update'],
   error: [],

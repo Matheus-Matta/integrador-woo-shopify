@@ -237,10 +237,20 @@ export function getPaymentData(order: Record<string, unknown>): {
 // ─── EPOFW meta (serviços extras) ──────────────────────────────────────────
 
 function parseExtraPrice(rawValue: unknown): number {
-  const match = s(rawValue).match(/\[\s*\+?\s*R\$\s*([\d.,]+)\s*\]/i);
+  const match = s(rawValue).match(/(?:\[|\()\s*\+?\s*R\$\s*([\d.,]+)\s*(?:\]|\))/i);
   if (!match) return 0;
   const parsed = Number(match[1].replace(/\./g, '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isSelectedPaidService(rawValue: unknown, extraPrice: number): boolean {
+  const value = s(rawValue);
+  if (!value) return false;
+
+  const normalized = normalizeSearchText(value);
+  if (normalized === 'nao' || normalized === 'no' || normalized === 'false') return false;
+
+  return extraPrice > 0;
 }
 
 function normalizeLabelTitle(rawName: string): string {
@@ -293,7 +303,8 @@ export function buildEpofwMeta(
 
   const fieldKey = `epofw_field_${serviceId}`;
   const productId = s(item?.product_id ?? item?.sku ?? '');
-  const extraPrice = parseExtraPrice(rawValue);
+  const extraPrice = parseExtraPrice(rawValue) || parseExtraPrice(rawName);
+  if (!isSelectedPaidService(rawValue, extraPrice)) return null;
   const priceInt = formatPriceIntegerString(extraPrice);
   const priceDisplay = formatPriceDisplay(extraPrice);
   const labelTitle = normalizeServiceLabel(rawName);
