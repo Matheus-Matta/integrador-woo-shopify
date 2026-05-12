@@ -42,3 +42,37 @@ export async function updateLexosOrderStatus(
     // Não lançamos erro por enquanto para não travar o fluxo do WooCommerce
   }
 }
+
+/**
+ * Envia um produto para a API da Lexos.
+ *
+ * OBSERVAÇÃO: Esta função é atualmente um STUB.
+ */
+export async function syncProductToLexos(
+  productData: Record<string, unknown>,
+): Promise<void> {
+  const sku = productData.sku as string;
+  console.log(`[Lexos API] Solicitada sincronização do produto SKU ${sku}`);
+
+  try {
+    // 1. Obter/Renovar Token (Fluxo OAuth2 não implementado)
+    // const token = await getValidLexosToken();
+
+    // 2. Chamar endpoint da API Lexos
+    // const response = await axios.post(`https://api.lexos.com.br/Produtos`, productData, { headers: { Authorization: `Bearer ${token}` } });
+    
+    // Simulação de sucesso
+    console.info(`[Lexos API] Produto SKU ${sku} sincronizado com sucesso na simulação.`);
+
+  } catch (error) {
+    console.error(`[Lexos API] Erro simulado ao sincronizar produto ${sku}:`, error);
+    await logError({
+      flow: 'lexos-product-sync',
+      error_message: 'Erro ao comunicar com API da Lexos (Stub)',
+      payload: productData,
+      entity_type: 'product',
+      entity_id: sku,
+    });
+    throw error;
+  }
+}

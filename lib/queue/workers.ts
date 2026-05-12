@@ -14,6 +14,7 @@ import {
 import { handleWooProduct } from './handlers/product-handlers';
 import { handleOrderAudit, handleProductRecentAudit, handleProductFullAudit } from './handlers/audit-handlers';
 import { handleLexosOrderCreate, handleLexosOrderUpdate } from './handlers/lexos-order-handlers';
+import { handleShopProductToLexos } from './handlers/lexos-product-handlers';
 
 function redisConnectionFromUrl(url: string) {
   const u = new URL(url);
@@ -98,6 +99,9 @@ const productsWorker = new Worker(
         break;
       case 'product-full-audit':
         await handleProductFullAudit();
+        break;
+      case 'shop-product-to-lexos':
+        await handleShopProductToLexos(payload);
         break;
       default:
         throw new Error(`Job desconhecido na fila products: ${job.name}`);
