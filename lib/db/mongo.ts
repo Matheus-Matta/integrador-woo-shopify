@@ -31,6 +31,7 @@ const logOrderSchema = new Schema({
   shopify_order_name:{ type: String },
   woo_order_id:      { type: Number, index: true },
   woo_instance:      { type: String },
+  origin:            { type: String, index: true }, // shopify | lexos | woo | scheduler
   action:            { type: String, required: true },       // create | update | mark_paid | fulfillment | delivered
   webhook:           { type: Schema.Types.Mixed },           // dados brutos recebidos via webhook
   payload:           { type: Schema.Types.Mixed },

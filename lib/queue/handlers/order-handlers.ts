@@ -272,7 +272,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   const globalExistingOrder = await findWooOrderByShopifyIdGlobal('starseguro', shopifyOrderId);
   if (globalExistingOrder) {
     console.log(`[shop-order-create] Pedido Shopify ${shopifyOrderId} ja existe no Woo (id=${globalExistingOrder.id}) - ignorando criacao duplicada`);
-    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: globalExistingOrder.id, woo_instance: 'starseguro', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
+    await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: globalExistingOrder.id, woo_instance: 'starseguro', origin: 'shopify', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
     return;
   }
 
@@ -285,7 +285,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
     if (existingOrder) {
       // Pedido já existe — encerra com sucesso sem criar duplicata.
       console.log(`[shop-order-create] Pedido Shopify ${shopifyOrderId} já existe no Woo (id=${existingOrder.id}) — ignorando criação duplicada`);
-      await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: existingOrder.id, woo_instance: 'starseguro', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
+      await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: existingOrder.id, woo_instance: 'starseguro', origin: 'shopify', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
       return; // encerra sem erro — não vai para retentativa
     }
   }
@@ -403,7 +403,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
 
   try {
     const created = await createOrder('starseguro', payload);
-    await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: created.id, woo_instance: 'starseguro', action: 'create', webhook: order, payload, response: created, status: 'success' });
+    await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: created.id, woo_instance: 'starseguro', origin: 'shopify', action: 'create', webhook: order, payload, response: created, status: 'success' });
   } catch (err: any) {
     const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
     
@@ -620,7 +620,7 @@ export async function handleShopOrderUpdate(order: Record<string, unknown>): Pro
     );
     try {
       const updated = await updateOrder('starchats', existingOrder.id, payload);
-      await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: updated.id, woo_instance: 'starchats', action: 'update', webhook: order, payload, response: updated, status: 'success' });
+      await logOrder({ shopify_order_id: shopifyOrderId, shopify_order_name: s(order?.name), woo_order_id: updated.id, woo_instance: 'starchats', origin: 'shopify', action: 'update', webhook: order, payload, response: updated, status: 'success' });
     } catch (err: any) {
       const details = err.response?.data ? JSON.stringify(err.response.data) : err.message;
       

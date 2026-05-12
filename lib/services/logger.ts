@@ -68,6 +68,8 @@ export async function logOrder(data: {
   shopify_order_name?: string;
   woo_order_id?: number;
   woo_instance?: string;
+  /** Origem do pedido: 'shopify' | 'lexos' | 'woo' | 'scheduler' */
+  origin?: string;
   action: string;
   webhook?: unknown;
   payload?: unknown;

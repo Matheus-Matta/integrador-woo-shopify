@@ -178,6 +178,7 @@ export async function handleLexosOrderCreate(
       shopify_order_id: lexosOrderId,
       woo_order_id: existingOrder.id,
       woo_instance: WOO_INSTANCE,
+      origin: 'lexos',
       action: 'create_skipped_duplicate',
       webhook: payload,
       status: 'skipped',
@@ -331,6 +332,7 @@ export async function handleLexosOrderCreate(
       shopify_order_name: lexosOrderNum,
       woo_order_id:   created.id,
       woo_instance:   WOO_INSTANCE,
+      origin:         'lexos',
       action:         'create',
       webhook:        payload,
       payload:        orderPayload,
@@ -355,6 +357,7 @@ export async function handleLexosOrderCreate(
     await logOrder({
       shopify_order_id: lexosOrderId,
       shopify_order_name: lexosOrderNum,
+      origin:  'lexos',
       action:  'create_failed',
       payload: orderPayload,
       response: axErr?.response?.data ?? { error: (err as Error).message },
