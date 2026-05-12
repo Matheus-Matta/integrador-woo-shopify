@@ -47,6 +47,8 @@ function expectedWebhooks(domain: string) {
       { topic: 'ORDERS_CREATE',    callbackUrl: `${domain}/api/webhooks/shopify/customers/create` },
       { topic: 'ORDERS_UPDATED',   callbackUrl: `${domain}/api/webhooks/shopify/orders/update`    },
       { topic: 'CUSTOMERS_UPDATE', callbackUrl: `${domain}/api/webhooks/shopify/customers/update` },
+      { topic: 'PRODUCTS_CREATE',  callbackUrl: `${domain}/api/webhooks/shopify/products/create`  },
+      { topic: 'PRODUCTS_UPDATE',  callbackUrl: `${domain}/api/webhooks/shopify/products/update`  },
     ],
     woocommerce: [
       { topic: 'order.updated',   deliveryUrl: `${domain}/api/webhooks/woo/orders/update` },
