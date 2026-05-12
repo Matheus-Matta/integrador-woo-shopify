@@ -123,6 +123,11 @@ export interface SystemDynamicConfig {
     secret: string;
     webhookSecret: string;
   };
+  lexos: {
+    /** Token enviado pela Lexos no header para validar a origem do webhook.
+     *  Deixar vazio caso a Lexos não envie assinatura. */
+    webhookToken: string;
+  };
   domain: string;
   scheduler: {
     active: boolean;
@@ -155,6 +160,9 @@ function loadConfig() {
           key: decryptSecret(rawConfig.woo?.key, 'WOO_KEY'),
           secret: decryptSecret(rawConfig.woo?.secret, 'WOO_SECRET'),
           webhookSecret: decryptSecret(rawConfig.woo?.webhookSecret, 'WOO_WEBHOOK_SECRET'),
+        },
+        lexos: {
+          webhookToken: decryptSecret(rawConfig.lexos?.webhookToken, 'LEXOS_WEBHOOK_TOKEN'),
         },
         domain: rawConfig.domain || '',
         scheduler: {
@@ -190,6 +198,9 @@ function initFromEnv() {
       secret: process.env.WOO_SECRET || '',
       webhookSecret: process.env.WOO_WEBHOOK_SECRET || '',
     },
+    lexos: {
+      webhookToken: process.env.LEXOS_WEBHOOK_TOKEN || '',
+    },
     domain: process.env.DOMAIN || '',
     scheduler: {
       active: process.env.SCHEDULER_ACTIVE !== 'false',
@@ -219,6 +230,9 @@ function saveConfig() {
         secret: encrypt(dynamicConfig.woo.secret),
         webhookSecret: encrypt(dynamicConfig.woo.webhookSecret),
       },
+      lexos: {
+        webhookToken: encrypt(dynamicConfig.lexos.webhookToken),
+      },
       domain: dynamicConfig.domain,
       scheduler: dynamicConfig.scheduler,
       productDailySync: dynamicConfig.productDailySync,
@@ -235,6 +249,7 @@ export function updateDynamicConfig(newConfig: Partial<SystemDynamicConfig>) {
     ...newConfig,
     shopify: { ...dynamicConfig.shopify, ...(newConfig.shopify || {}) },
     woo: { ...dynamicConfig.woo, ...(newConfig.woo || {}) },
+    lexos: { ...dynamicConfig.lexos, ...(newConfig.lexos || {}) },
     scheduler: { ...dynamicConfig.scheduler, ...(newConfig.scheduler || {}) },
     productDailySync: { ...dynamicConfig.productDailySync, ...(newConfig.productDailySync || {}) },
   };
@@ -251,6 +266,7 @@ export const config = {
 
   get shopify() { return dynamicConfig.shopify; },
   get woo() { return dynamicConfig.woo; },
+  get lexos() { return dynamicConfig.lexos; },
   get domain() { return dynamicConfig.domain.replace(/\/$/, ''); },
   get scheduler() { return dynamicConfig.scheduler; },
   get productDailySync() { return dynamicConfig.productDailySync; },
