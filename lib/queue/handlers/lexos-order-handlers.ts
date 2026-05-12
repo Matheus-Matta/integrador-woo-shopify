@@ -264,6 +264,7 @@ export async function handleLexosOrderCreate(
   const compl   = s(entrega.complemento);
 
   const metaData = [
+    { key: '_origin',             value: 'lexos' },
     { key: '_lexos_order_id',     value: lexosOrderId },
     { key: '_lexos_order_number', value: lexosOrderNum },
     { key: '_lexos_canal',        value: canal },

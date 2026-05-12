@@ -350,6 +350,7 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
   const paymentData = getPaymentData(order);
 
   const meta_data = cleanMetaData([
+    { key: '_origin', value: 'shopify' },
     { key: '_shopify_order_id', value: shopifyOrderId },
     { key: '_shopify_order_number', value: s(order?.order_number) },
     { key: '_shopify_name', value: s(order?.name) },
@@ -455,6 +456,7 @@ function buildOrderPayload(
   const paymentData = getPaymentData(order);
 
   const meta_data = cleanMetaData([
+    { key: '_origin', value: 'shopify' },
     { key: '_billing_cpf', value: cpfFinal }, { key: '_billing_persontype', value: '1' },
     { key: '_billing_number', value: billingNumber }, { key: '_billing_neighborhood', value: billingNeighborhood },
     { key: '_shipping_number', value: shippingNumber }, { key: '_shipping_neighborhood', value: shippingNeighborhood },
