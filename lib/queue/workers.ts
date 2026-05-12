@@ -13,7 +13,7 @@ import {
 } from './handlers/order-handlers';
 import { handleWooProduct } from './handlers/product-handlers';
 import { handleOrderAudit, handleProductRecentAudit, handleProductFullAudit } from './handlers/audit-handlers';
-import { handleLexosOrderCreate } from './handlers/lexos-order-handlers';
+import { handleLexosOrderCreate, handleLexosOrderUpdate } from './handlers/lexos-order-handlers';
 
 function redisConnectionFromUrl(url: string) {
   const u = new URL(url);
@@ -68,6 +68,9 @@ const ordersWorker = new Worker(
         break;
       case 'lexos-order-create':
         await handleLexosOrderCreate(payload);
+        break;
+      case 'lexos-order-update':
+        await handleLexosOrderUpdate(payload);
         break;
       default:
         throw new Error(`Job desconhecido na fila orders: ${job.name}`);    }

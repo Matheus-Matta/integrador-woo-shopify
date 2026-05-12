@@ -11,6 +11,7 @@ import {
   createCustomer,
   findWooOrderByShopifyIdGlobal,
   createOrder,
+  updateOrder,
   WooInstance,
 } from '../../services/woocommerce';
 import { logOrder, logCustomer, logError } from '../../services/logger';
@@ -363,6 +364,102 @@ export async function handleLexosOrderCreate(
       payload: orderPayload,
       response: axErr?.response?.data ?? { error: (err as Error).message },
       status:  'error',
+    });
+
+    throw err;
+  }
+}
+
+// ─── Handler de Update ─────────────────────────────────────────────────────
+
+export async function handleLexosOrderUpdate(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const data = (payload.data ?? payload) as LexosPedido;
+
+  const lexosOrderId  = s(data.pedido_id);
+  const lexosOrderNum = s(data.numero_pedido);
+
+  if (!lexosOrderId) throw new Error('[lexos-order-update] pedido_id ausente no payload');
+
+  const existingOrder = await findWooOrderByShopifyIdGlobal(WOO_INSTANCE, lexosOrderId);
+  if (!existingOrder) {
+    console.warn(`[lexos-order-update] Pedido Lexos ${lexosOrderId} não encontrado no Woo — ignorando update`);
+    await logOrder({
+      shopify_order_id: lexosOrderId,
+      shopify_order_name: lexosOrderNum,
+      woo_instance: WOO_INSTANCE,
+      origin: 'lexos',
+      action: 'update_skipped_not_found',
+      webhook: payload,
+      status: 'skipped',
+    });
+    return;
+  }
+
+  const novoStatus = mapLexosStatus(data.status);
+
+  // Evitar update se o status não mudou, reduzindo chamadas
+  if (existingOrder.status === novoStatus) {
+    console.info(`[lexos-order-update] Status do pedido ${lexosOrderId} inalterado (${novoStatus}) — ignorando update`);
+    await logOrder({
+      shopify_order_id: lexosOrderId,
+      woo_order_id: existingOrder.id,
+      woo_instance: WOO_INSTANCE,
+      origin: 'lexos',
+      action: 'update_skipped_unchanged',
+      webhook: payload,
+      status: 'skipped',
+    });
+    return;
+  }
+
+  const orderPayload = compactObject({
+    status: novoStatus,
+    // Se a Lexos mandar outros dados atualizados (ex: endereço corrigido),
+    // poderíamos estender esse payload. Inicialmente focamos em status.
+  });
+
+  try {
+    const updated = await updateOrder(WOO_INSTANCE, existingOrder.id, orderPayload);
+    console.info(
+      `[lexos-order-update] Pedido Lexos ${lexosOrderId} atualizado no Woo (id=${updated.id}) para status ${novoStatus}`,
+    );
+    await logOrder({
+      shopify_order_id: lexosOrderId,
+      shopify_order_name: lexosOrderNum,
+      woo_order_id: updated.id,
+      woo_instance: WOO_INSTANCE,
+      origin: 'lexos',
+      action: 'update',
+      webhook: payload,
+      payload: orderPayload,
+      response: updated,
+      status: 'success',
+    });
+  } catch (err: unknown) {
+    const axErr = err instanceof AxiosError ? err : null;
+    const details = axErr?.response?.data
+      ? JSON.stringify(axErr.response.data)
+      : (err as Error).message;
+
+    await logError({
+      flow: 'lexos-order-update',
+      error_message: `Erro ao atualizar pedido no WooCommerce: ${details}`,
+      payload: { lexosOrderId, orderPayload },
+      entity_type: 'order',
+      entity_id: lexosOrderId,
+      stack: (err as Error).stack,
+    });
+
+    await logOrder({
+      shopify_order_id: lexosOrderId,
+      shopify_order_name: lexosOrderNum,
+      origin: 'lexos',
+      action: 'update_failed',
+      payload: orderPayload,
+      response: axErr?.response?.data ?? { error: (err as Error).message },
+      status: 'error',
     });
 
     throw err;

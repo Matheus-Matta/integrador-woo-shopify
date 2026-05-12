@@ -25,6 +25,7 @@ import {
   markFulfillmentDelivered,
   getFullShopifyOrder,
 } from '../../services/shopify';
+import { updateLexosOrderStatus } from '../../services/lexos';
 import { logCustomer, logOrder, logError } from '../../services/logger';
 import {
   s,
@@ -725,17 +726,43 @@ export async function handleWooOrderUpdate(body: Record<string, unknown>): Promi
 
   if (!shopifyOrderId) throw new Error('Nenhum _shopify_order_id ou transaction_id encontrado');
 
+  const deliveryType = lower(findMeta('delivery_type'));
+  const deliveryDate = findMeta('delivery_date');
+  const paymentText = `${s(body?.payment_method)} ${s(body?.payment_method_title)}`.toLowerCase();
+  const isCOD = /cash on delivery|\bcod\b|pagamento na entrega|na entrega|cartão na entrega|cartao na entrega/.test(paymentText);
+  const wooOrderId = Number(body?.id);
+  const origin = findMeta('_origin');
+
+  if (origin === 'lexos') {
+    if (wooStatus !== 'completed') {
+      await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: wooOrderId, origin: 'lexos', action: 'update_skipped_not_completed', webhook: body, payload: { wooStatus }, status: 'skipped' });
+      return;
+    }
+    
+    // Sincronização inversa WooCommerce -> Lexos
+    await updateLexosOrderStatus({
+      pedidoId: shopifyOrderId,
+      status: wooStatus, // Enviamos o status do WooCommerce ou podemos mapear para o equivalente da Lexos
+    });
+    
+    await logOrder({
+      shopify_order_id: shopifyOrderId,
+      woo_order_id: wooOrderId,
+      origin: 'lexos',
+      action: 'sync_lexos_api',
+      webhook: body,
+      payload: { wooStatus },
+      status: 'success'
+    });
+    return;
+  }
+
   if (wooStatus !== 'completed') {
     await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: Number(body?.id), action: 'update_skipped_not_completed', webhook: body, payload: { wooStatus }, status: 'skipped' });
     return;
   }
 
   const shopifyOrderGid = `gid://shopify/Order/${shopifyOrderId}`;
-  const deliveryType = lower(findMeta('delivery_type'));
-  const deliveryDate = findMeta('delivery_date');
-  const paymentText = `${s(body?.payment_method)} ${s(body?.payment_method_title)}`.toLowerCase();
-  const isCOD = /cash on delivery|\bcod\b|pagamento na entrega|na entrega|cartão na entrega|cartao na entrega/.test(paymentText);
-  const wooOrderId = Number(body?.id);
 
   const ordDetails = await getOrderDetails(shopifyOrderGid);
   const shopifyOrder = ordDetails?.data?.order;
