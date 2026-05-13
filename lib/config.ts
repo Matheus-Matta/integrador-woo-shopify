@@ -127,6 +127,12 @@ export interface SystemDynamicConfig {
     /** Token enviado pela Lexos no header para validar a origem do webhook.
      *  Deixar vazio caso a Lexos não envie assinatura. */
     webhookToken: string;
+    /** JWT usado para autenticação na Lexos API */
+    apiToken: string;
+    /** Chave da integração para autenticação na Lexos API */
+    integrationKey: string;
+    /** Base URL da Lexos API */
+    url: string;
   };
   domain: string;
   scheduler: {
@@ -163,6 +169,9 @@ function loadConfig() {
         },
         lexos: {
           webhookToken: decryptSecret(rawConfig.lexos?.webhookToken, 'LEXOS_WEBHOOK_TOKEN'),
+          apiToken: decryptSecret(rawConfig.lexos?.apiToken, 'LEXOS_API_TOKEN'),
+          integrationKey: decryptSecret(rawConfig.lexos?.integrationKey, 'LEXOS_INTEGRATION_KEY'),
+          url: rawConfig.lexos?.url || 'https://api.lexos.com.br',
         },
         domain: rawConfig.domain || '',
         scheduler: {
@@ -200,6 +209,9 @@ function initFromEnv() {
     },
     lexos: {
       webhookToken: process.env.LEXOS_WEBHOOK_TOKEN || '',
+      apiToken: process.env.LEXOS_API_TOKEN || '',
+      integrationKey: process.env.LEXOS_INTEGRATION_KEY || '',
+      url: process.env.LEXOS_URL || 'https://api.lexos.com.br',
     },
     domain: process.env.DOMAIN || '',
     scheduler: {

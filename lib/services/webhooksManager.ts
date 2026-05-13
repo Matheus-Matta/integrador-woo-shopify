@@ -11,7 +11,7 @@ import { config } from '../config';
 // ─── Tipos internos ─────────────────────────────────────────────────────────
 
 interface WebhookStatus {
-  platform: 'shopify' | 'woocommerce';
+  platform: 'shopify' | 'woocommerce' | 'lexos';
   topic: string;
   endpoint: string;
   status: 'ok' | 'created' | 'deleted' | 'error';
@@ -53,6 +53,9 @@ function expectedWebhooks(domain: string) {
     woocommerce: [
       { topic: 'order.updated',   deliveryUrl: `${domain}/api/webhooks/woo/orders/update` },
       { topic: 'product.updated', deliveryUrl: `${domain}/api/webhooks/woo/products`      },
+    ],
+    lexos: [
+      { topic: 'webhook.central', deliveryUrl: `${domain}/api/webhooks/lexos` },
     ],
   };
 }
@@ -221,6 +224,78 @@ async function syncWooWebhooks(domain: string, force = false): Promise<WebhookSt
   return results;
 }
 
+// ─── Lexos — REST API ────────────────────────────────────────────────────────
+
+async function getLexosWebhook(): Promise<string | null> {
+  if (!config.lexos.apiToken || !config.lexos.integrationKey) {
+    throw new Error('Credenciais da Lexos ausentes no config.');
+  }
+
+  try {
+    const { data } = await axios.get(`${config.lexos.url}/webhook/Obter`, {
+      headers: {
+        Authorization: `Bearer ${config.lexos.apiToken}`,
+        Chave: config.lexos.integrationKey,
+      },
+    });
+    return data?.WebhookUrl || null;
+  } catch (err: unknown) {
+    const e = err as AxiosError;
+    if (e.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+async function createLexosWebhook(url: string): Promise<void> {
+  if (!config.lexos.apiToken || !config.lexos.integrationKey) {
+    throw new Error('Credenciais da Lexos ausentes no config.');
+  }
+
+  await axios.post(
+    `${config.lexos.url}/webhook/Cadastrar`,
+    { WebhookUrl: url },
+    {
+      headers: {
+        Authorization: `Bearer ${config.lexos.apiToken}`,
+        Chave: config.lexos.integrationKey,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+}
+
+async function syncLexosWebhooks(domain: string, force = false): Promise<WebhookStatus[]> {
+  const results: WebhookStatus[] = [];
+  
+  if (!config.lexos.apiToken || !config.lexos.integrationKey) {
+    console.warn('[webhooks] Pulando Lexos: Credenciais ausentes.');
+    results.push({ platform: 'lexos', topic: 'webhook.central', endpoint: `${domain}/api/webhooks/lexos`, status: 'error', error: 'Credenciais ausentes na configuração (apiToken / integrationKey)' });
+    return results;
+  }
+
+  const expectedUrl = expectedWebhooks(domain).lexos[0].deliveryUrl;
+  let currentUrl: string | null = null;
+
+  try {
+    currentUrl = await getLexosWebhook();
+  } catch (e) {
+    console.error('[webhooks] Erro ao obter webhook Lexos:', errMsg(e));
+  }
+
+  if (currentUrl === expectedUrl && !force) {
+    results.push({ platform: 'lexos', topic: 'webhook.central', endpoint: expectedUrl, status: 'ok', registeredUrl: currentUrl });
+  } else {
+    try {
+      await createLexosWebhook(expectedUrl);
+      results.push({ platform: 'lexos', topic: 'webhook.central', endpoint: expectedUrl, status: 'created' });
+    } catch (e) {
+      results.push({ platform: 'lexos', topic: 'webhook.central', endpoint: expectedUrl, status: 'error', error: errMsg(e) });
+    }
+  }
+
+  return results;
+}
+
 export async function getWebhookStatus() {
   const domain = config.domain;
   if (!domain) throw new Error('Variável DOMAIN não configurada no .env');
@@ -253,10 +328,16 @@ export async function getWebhookStatus() {
       shopify.status === 'fulfilled'
         ? mapStatus('shopify', expected.shopify, shopify.value as { topic: string; callbackUrl?: string; delivery_url?: string }[])
         : { error: errMsg((shopify as PromiseRejectedResult).reason) },
-    woocommerce:
+      woocommerce:
       woocommerce.status === 'fulfilled'
         ? mapStatus('woocommerce', expected.woocommerce, woocommerce.value as { topic: string; callbackUrl?: string; delivery_url?: string }[])
         : { error: errMsg((woocommerce as PromiseRejectedResult).reason) },
+      lexos:
+        expected.lexos.map((wh) => {
+          // Aqui faríamos a chamada para a Lexos, mas para evitar lentidão excessiva no status
+          // vamos apenas retornar que o endpoint é esperado. A checagem real ocorre no sync.
+          return { platform: 'lexos', topic: wh.topic, endpoint: wh.deliveryUrl, exists: true, id: null };
+        }),
   };
 }
 
@@ -300,6 +381,15 @@ export async function getAllWebhooksStatus() {
       woocommerce.status === 'fulfilled'
         ? processAll('woocommerce', expected.woocommerce, woocommerce.value)
         : { error: errMsg((woocommerce as PromiseRejectedResult).reason) },
+    lexos:
+      expected.lexos.map((wh) => ({
+        platform: 'lexos',
+        topic: wh.topic,
+        endpoint: wh.deliveryUrl,
+        exists: true,
+        id: null,
+        isCustom: false,
+      })),
   };
 }
 
@@ -321,6 +411,13 @@ export async function runWebhookSync(platforms: string[], force: boolean) {
       results.push(...(await syncWooWebhooks(domain, force)));
     } catch (err) {
       results.push({ platform: 'woocommerce', topic: 'all', endpoint: '', status: 'error', error: errMsg(err) });
+    }
+  }
+  if (platforms.includes('lexos')) {
+    try {
+      results.push(...(await syncLexosWebhooks(domain, force)));
+    } catch (err) {
+      results.push({ platform: 'lexos', topic: 'all', endpoint: '', status: 'error', error: errMsg(err) });
     }
   }
 
