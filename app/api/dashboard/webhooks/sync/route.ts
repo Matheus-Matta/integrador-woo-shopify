@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const platforms = body.platforms ?? ['shopify', 'woocommerce'];
+    const platforms = body.platforms ?? ['shopify', 'woocommerce', 'lexos'];
     const force = body.force === true;
 
     const { hasError, domain, results } = await runWebhookSync(platforms, force);

@@ -270,16 +270,21 @@ export async function handleShopOrderCreate(order: Record<string, unknown>): Pro
 
   if (!email || !shopifyOrderId) throw new Error('email e id do pedido são obrigatórios');
 
-  const globalExistingOrder = await findWooOrderByShopifyIdGlobal('starseguro', shopifyOrderId);
+  // ── Camada 4 (banco): verifica se o pedido já existe em qualquer instância ─
+  // Esta é a camada mais confiável. Mesmo que o Redis falhe ou seja resetado,
+  // o banco impede duplicatas. Verificamos AMBAS as instâncias.
+  const [globalExistingStarseguro, globalExistingStarchats] = await Promise.all([
+    findWooOrderByShopifyIdGlobal('starseguro', shopifyOrderId),
+    findWooOrderByShopifyIdGlobal('starchats', shopifyOrderId),
+  ]);
+  const globalExistingOrder = globalExistingStarseguro || globalExistingStarchats;
   if (globalExistingOrder) {
     console.log(`[shop-order-create] Pedido Shopify ${shopifyOrderId} ja existe no Woo (id=${globalExistingOrder.id}) - ignorando criacao duplicada`);
     await logOrder({ shopify_order_id: shopifyOrderId, woo_order_id: globalExistingOrder.id, woo_instance: 'starseguro', origin: 'shopify', action: 'create_skipped_duplicate', webhook: order, status: 'skipped' });
     return;
   }
 
-  // ── Idempotência: verifica se o pedido já existe no Woo ───────────────────
-  // Garante que dois webhooks orders/create (pending + paid) não criem dois
-  // pedidos. Usa busca por email para obter o customerId sem depender de cache.
+  // ── Idempotência secundária por email+orderId ──────────────────────────────
   const existingCustomerForCheck = await getCustomerByEmail('starseguro', email);
   if (existingCustomerForCheck) {
     const existingOrder = await findWooOrderByShopifyId('starseguro', existingCustomerForCheck.id, shopifyOrderId);

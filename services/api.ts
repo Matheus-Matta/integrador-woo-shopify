@@ -115,11 +115,11 @@ export async function getWebhookStatus(): Promise<WebhookStatusResponse> {
   return apiFetch<WebhookStatusResponse>('/api/dashboard/webhooks/status');
 }
 
-export async function syncWebhooks(force = false): Promise<WebhookSyncResponse> {
+export async function syncWebhooks(force = false, platforms: string[] = ['shopify', 'woocommerce', 'lexos']): Promise<WebhookSyncResponse> {
   return apiFetch<WebhookSyncResponse>('/api/dashboard/webhooks/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force }),
+    body: JSON.stringify({ force, platforms }),
   });
 }
 

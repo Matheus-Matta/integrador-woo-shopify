@@ -25,6 +25,13 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -40,6 +47,7 @@ import {
   IconAlertTriangle,
   IconApiApp,
   IconPlus,
+  IconChevronDown,
 } from '@tabler/icons-react';
 
 export function WebhookTable() {
@@ -54,8 +62,8 @@ export function WebhookTable() {
     url: '',
   });
 
-  const handleSync = async (force: boolean) => {
-    await sync(force);
+  const handleSync = async (force: boolean, platforms: string[] = ['shopify', 'woocommerce', 'lexos']) => {
+    await sync(force, platforms);
     if (!force) toast('Sincronização concluída', 'ok');
   };
 
@@ -92,28 +100,53 @@ export function WebhookTable() {
             <IconSearch className="h-4 w-4" />
             Verificar status
           </Button>
-          <Button
-            onClick={() => handleSync(false)}
-            disabled={loading}
-            className="gap-2"
-          >
-            {loading ? (
-              <Spinner className="h-4 w-4 mr-1 text-primary-foreground" />
-            ) : (
-              <IconRefresh className="h-4 w-4" />
-            )}
-            Sincronizar agora
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => handleSync(true)}
-            disabled={loading}
-            title="Deleta todos os webhooks existentes e recria do zero"
-            className="gap-2"
-          >
-            <IconAlertTriangle className="h-4 w-4" />
-            Forçar Recriação
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className={cn(buttonVariants({ variant: 'default' }), "gap-2")} disabled={loading}>
+              {loading ? (
+                <Spinner className="h-4 w-4 mr-1 text-primary-foreground" />
+              ) : (
+                <IconRefresh className="h-4 w-4" />
+              )}
+              Sincronizar <IconChevronDown className="h-4 w-4 opacity-50" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleSync(false)}>
+                Sincronizar Todos
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleSync(false, ['shopify'])}>
+                Apenas Shopify
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleSync(false, ['woocommerce'])}>
+                Apenas WooCommerce
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleSync(false, ['lexos'])}>
+                Apenas Lexos
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger className={cn(buttonVariants({ variant: 'destructive' }), "gap-2")} disabled={loading}>
+              <IconAlertTriangle className="h-4 w-4" />
+              Forçar Recriação <IconChevronDown className="h-4 w-4 opacity-50" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleSync(true)} className="text-destructive focus:text-destructive">
+                Recriar Todos
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleSync(true, ['shopify'])} className="text-destructive focus:text-destructive">
+                Apenas Shopify
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleSync(true, ['woocommerce'])} className="text-destructive focus:text-destructive">
+                Apenas WooCommerce
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleSync(true, ['lexos'])} className="text-destructive focus:text-destructive">
+                Apenas Lexos
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger
@@ -145,6 +178,7 @@ export function WebhookTable() {
                     <SelectContent>
                       <SelectItem value="shopify">Shopify</SelectItem>
                       <SelectItem value="woocommerce">WooCommerce</SelectItem>
+                      <SelectItem value="lexos">Lexos</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -226,7 +260,9 @@ export function WebhookTable() {
                     <TableCell className="font-medium capitalize flex items-center gap-2">
                       <span
                         className={`w-2 h-2 rounded-full ${
-                          r.platform === 'shopify' ? 'bg-[#95bf47]' : 'bg-[#96588a]'
+                          r.platform === 'shopify' ? 'bg-[#95bf47]' : 
+                          r.platform === 'woocommerce' ? 'bg-[#96588a]' : 
+                          'bg-[#f0801a]'
                         }`}
                       ></span>
                       {r.platform}

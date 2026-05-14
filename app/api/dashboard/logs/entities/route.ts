@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     groupField = '$sku';
     nameFieldExpression = { 
       $first: {
-        $ifNull: ['$after.name', { $ifNull: ['$before.name', '$sku'] }]
+        $ifNull: ['$after.nome', { $ifNull: ['$after.name', { $ifNull: ['$before.nome', { $ifNull: ['$before.name', '$sku'] }] }] }]
       }
     };
   } else {

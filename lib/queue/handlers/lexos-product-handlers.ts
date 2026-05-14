@@ -1,6 +1,6 @@
 import { s, compactObject, arrayOf, money } from '../../utils/helpers';
 import { syncProductToLexos } from '../../services/lexos';
-import { logError } from '../../services/logger';
+import { logError, logProduct } from '../../services/logger';
 
 // Tipagem básica das Variantes do Shopify para nos ajudar no mapping
 interface ShopifyVariant {
@@ -88,6 +88,13 @@ export async function handleShopProductToLexos(payload: Record<string, unknown>)
     });
 
     await syncProductToLexos(lexosProductPayload);
+    
+    await logProduct({
+      sku: baseSku,
+      action: 'shopify-to-lexos-sync',
+      after: lexosProductPayload,
+      status: 'success'
+    });
 
   } catch (err: unknown) {
     const errorMsg = (err as Error).message;

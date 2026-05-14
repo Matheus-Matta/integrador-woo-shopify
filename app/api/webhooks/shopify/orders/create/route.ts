@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
     const shopifyOrderId = String(order?.id ?? '');
     const shopifyOrderName = String(order?.name ?? '');
 
+    // ── Camada 1: HMAC obrigatório ─────────────────────────────────────────
     if (!verifyShopifyHmac(rawBody, sig)) {
       console.warn(`[shop-order-create] HMAC invalido - rejeitado IP: ${ip}`);
       await logError({
@@ -74,9 +75,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Assinatura invalida' }, { status: 401 });
     }
 
+    // ── Camada 2: Deduplicação por delivery-id (mais rápida) ───────────────
     if (deliveryId) {
-      const isNew = await deduplicateDelivery(deliveryId);
-      if (!isNew) {
+      const isNewDelivery = await deduplicateDelivery(deliveryId);
+      if (!isNewDelivery) {
         console.warn(`[shop-order-create] delivery duplicado - descartado: ${deliveryId}`);
         await logOrder({
           shopify_order_id: shopifyOrderId || undefined,
@@ -103,23 +105,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email e id do pedido sao obrigatorios' }, { status: 400 });
     }
 
+    // ── Camada 3: Deduplicação por orderId (janela de 7 dias no Redis) ──────
+    // Essa camada é a mais importante para evitar duplicatas de pedidos.
+    // Usa SET NX atomicamente no Redis — garante que apenas 1 job seja criado
+    // mesmo que 2 webhooks do mesmo pedido cheguem em paralelo.
     const isNewOrder = await deduplicateOrder('shop-order-create', shopifyOrderId);
     if (!isNewOrder) {
-      console.warn(`[shop-order-create] order duplicado na janela de dedupe - descartado: ${shopifyOrderId}`);
+      console.warn(`[shop-order-create] orderId ja processado na janela de 7 dias - descartado: ${shopifyOrderId}`);
       await logOrder({
         shopify_order_id: shopifyOrderId,
         shopify_order_name: shopifyOrderName,
         action: 'webhook_skipped_duplicate_order_window',
         webhook: order,
-        payload: { reason: 'duplicate-order', dedupeWindowSeconds: 604800, ip, deliveryId, topic },
+        payload: { reason: 'duplicate-order-id', dedupeWindowDays: 7, ip, deliveryId, topic },
         status: 'skipped',
       });
-      return NextResponse.json({ skipped: true, reason: 'duplicate-order' });
+      return NextResponse.json({ skipped: true, reason: 'duplicate-order-id' });
     }
 
+    // ── Enfileira com jobId fixo (BullMQ garante unicidade do jobId) ────────
+    // Se por algum motivo o Redis falhar e o mesmo orderId chegar novamente,
+    // o jobId fixo impede que o BullMQ crie um job duplicado na fila.
+    const jobId = `shop-order-create:${shopifyOrderId}`;
     const job = await ordersQueue.add('shop-order-create', order ?? {}, {
-      jobId: `shop-order-create:${shopifyOrderId}`,
+      jobId,
+      // Não coloca em retentativa aqui — o worker cuida disso
     });
+
     console.info(`[shop-order-create] enfileirado - jobId=${job.id} shopifyOrderId=${shopifyOrderId}`);
     return NextResponse.json({ queued: true, jobId: job.id, shopifyOrderId }, { status: 202 });
   } catch (err) {

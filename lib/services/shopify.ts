@@ -61,6 +61,9 @@ export interface ShopifyOrderDetails {
 
 async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const { data } = await shopifyClient.post('', { query, variables });
+  if ((data as any)?.errors) {
+    console.error('[Shopify GraphQL Error]', JSON.stringify((data as any).errors, null, 2));
+  }
   return data as T;
 }
 

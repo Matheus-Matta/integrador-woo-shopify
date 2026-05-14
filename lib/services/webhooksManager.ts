@@ -246,7 +246,7 @@ async function getLexosWebhook(): Promise<string | null> {
   }
 }
 
-async function createLexosWebhook(url: string): Promise<void> {
+export async function createLexosWebhook(url: string): Promise<void> {
   if (!config.lexos.apiToken || !config.lexos.integrationKey) {
     throw new Error('Credenciais da Lexos ausentes no config.');
   }
@@ -300,9 +300,10 @@ export async function getWebhookStatus() {
   const domain = config.domain;
   if (!domain) throw new Error('Variável DOMAIN não configurada no .env');
 
-  const [shopify, woocommerce] = await Promise.allSettled([
+  const [shopify, woocommerce, lexosWebhookUrl] = await Promise.allSettled([
     listShopifyWebhooks(),
     listWooWebhooks(),
+    getLexosWebhook(),
   ]);
 
   const expected = expectedWebhooks(domain);
@@ -328,24 +329,31 @@ export async function getWebhookStatus() {
       shopify.status === 'fulfilled'
         ? mapStatus('shopify', expected.shopify, shopify.value as { topic: string; callbackUrl?: string; delivery_url?: string }[])
         : { error: errMsg((shopify as PromiseRejectedResult).reason) },
-      woocommerce:
+    woocommerce:
       woocommerce.status === 'fulfilled'
         ? mapStatus('woocommerce', expected.woocommerce, woocommerce.value as { topic: string; callbackUrl?: string; delivery_url?: string }[])
         : { error: errMsg((woocommerce as PromiseRejectedResult).reason) },
-      lexos:
-        expected.lexos.map((wh) => {
-          // Aqui faríamos a chamada para a Lexos, mas para evitar lentidão excessiva no status
-          // vamos apenas retornar que o endpoint é esperado. A checagem real ocorre no sync.
-          return { platform: 'lexos', topic: wh.topic, endpoint: wh.deliveryUrl, exists: true, id: null };
-        }),
+    lexos:
+      expected.lexos.map((wh) => {
+        const exists = lexosWebhookUrl.status === 'fulfilled' && lexosWebhookUrl.value === wh.deliveryUrl;
+        return { 
+          platform: 'lexos', 
+          topic: wh.topic, 
+          endpoint: wh.deliveryUrl, 
+          exists, 
+          id: null,
+          error: lexosWebhookUrl.status === 'rejected' ? errMsg(lexosWebhookUrl.reason) : undefined
+        };
+      }),
   };
 }
 
 export async function getAllWebhooksStatus() {
   const domain = config.domain || 'N/A';
-  const [shopify, woocommerce] = await Promise.allSettled([
+  const [shopify, woocommerce, lexosWebhookUrl] = await Promise.allSettled([
     listShopifyWebhooks(),
     listWooWebhooks(),
+    getLexosWebhook(),
   ]);
 
   const expected = expectedWebhooks(domain);
@@ -382,14 +390,18 @@ export async function getAllWebhooksStatus() {
         ? processAll('woocommerce', expected.woocommerce, woocommerce.value)
         : { error: errMsg((woocommerce as PromiseRejectedResult).reason) },
     lexos:
-      expected.lexos.map((wh) => ({
-        platform: 'lexos',
-        topic: wh.topic,
-        endpoint: wh.deliveryUrl,
-        exists: true,
-        id: null,
-        isCustom: false,
-      })),
+      expected.lexos.map((wh) => {
+        const exists = lexosWebhookUrl.status === 'fulfilled' && lexosWebhookUrl.value === wh.deliveryUrl;
+        return {
+          platform: 'lexos',
+          topic: wh.topic,
+          endpoint: wh.deliveryUrl,
+          exists,
+          id: null,
+          isCustom: false,
+          error: lexosWebhookUrl.status === 'rejected' ? errMsg(lexosWebhookUrl.reason) : undefined
+        };
+      }),
   };
 }
 

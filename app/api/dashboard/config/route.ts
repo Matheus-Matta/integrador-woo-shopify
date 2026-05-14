@@ -30,6 +30,12 @@ export async function GET(req: NextRequest) {
       secret: maskSecret(config.woo.secret || ''),
       webhookSecret: maskSecret(config.woo.webhookSecret || ''),
     },
+    lexos: {
+      url: config.lexos.url || '',
+      webhookToken: maskSecret(config.lexos.webhookToken || ''),
+      apiToken: maskSecret(config.lexos.apiToken || ''),
+      integrationKey: maskSecret(config.lexos.integrationKey || ''),
+    },
     domain: config.domain || null,
     queueAttempts: config.queue.attempts,
     queueBackoffMs: config.queue.backoffDelay,
@@ -59,6 +65,14 @@ export async function POST(request: NextRequest) {
         key: keepSecret(body.woo.key) ? body.woo.key : config.woo.key,
         secret: keepSecret(body.woo.secret) ? body.woo.secret : config.woo.secret,
         webhookSecret: keepSecret(body.woo.webhookSecret) ? body.woo.webhookSecret : config.woo.webhookSecret,
+      };
+    }
+    if (body.lexos) {
+      newConfig.lexos = {
+        url: typeof body.lexos.url === 'string' ? body.lexos.url : config.lexos.url,
+        webhookToken: keepSecret(body.lexos.webhookToken) ? body.lexos.webhookToken : config.lexos.webhookToken,
+        apiToken: keepSecret(body.lexos.apiToken) ? body.lexos.apiToken : config.lexos.apiToken,
+        integrationKey: keepSecret(body.lexos.integrationKey) ? body.lexos.integrationKey : config.lexos.integrationKey,
       };
     }
     if (body.domain !== undefined) newConfig.domain = body.domain;

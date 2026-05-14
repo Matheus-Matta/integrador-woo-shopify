@@ -1,8 +1,16 @@
 import type { Metadata } from 'next';
+import { Roboto } from 'next/font/google';
 import './globals.css';
 import { ReactQueryProvider } from '@/providers/ReactQueryProvider';
 import { ToastProvider } from '@/providers/ToastProvider';
 import { cn } from "@/lib/utils";
+
+const roboto = Roboto({
+  weight: ['300', '400', '500', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-roboto',
+});
 
 export const metadata: Metadata = {
   title: 'Integrador Shopify ↔ WooCommerce',
@@ -11,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={cn("dark", "font-sans")}>
+    <html lang="pt-BR" className={cn("dark", roboto.variable)}>
       <head>
         <link
           href="https://fonts.googleapis.com/icon?family=Material+Icons"

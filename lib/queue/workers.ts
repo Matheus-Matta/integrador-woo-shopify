@@ -15,6 +15,7 @@ import { handleWooProduct } from './handlers/product-handlers';
 import { handleOrderAudit, handleProductRecentAudit, handleProductFullAudit } from './handlers/audit-handlers';
 import { handleLexosOrderCreate, handleLexosOrderUpdate } from './handlers/lexos-order-handlers';
 import { handleShopProductToLexos } from './handlers/lexos-product-handlers';
+import { withOrderLock } from '../services/orderLock';
 
 function redisConnectionFromUrl(url: string) {
   const u = new URL(url);
@@ -55,12 +56,17 @@ const ordersWorker = new Worker(
       case 'shop-customer-update':
         await handleShopCustomerUpdate(payload);
         break;
-      case 'shop-order-create':
-        await handleShopOrderCreate(payload);
+      case 'shop-order-create': {
+        // Lock por orderId: garante que create e update do mesmo pedido não rodam em paralelo
+        const orderId = String((payload as any)?.id ?? '');
+        await withOrderLock(orderId || `no-id-${job.id}`, () => handleShopOrderCreate(payload));
         break;
-      case 'shop-order-update':
-        await handleShopOrderUpdate(payload);
+      }
+      case 'shop-order-update': {
+        const orderId = String((payload as any)?.id ?? '');
+        await withOrderLock(orderId || `no-id-${job.id}`, () => handleShopOrderUpdate(payload));
         break;
+      }
       case 'woo-order-update':
         await handleWooOrderUpdate(payload);
         break;

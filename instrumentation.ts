@@ -8,7 +8,13 @@ export async function register() {
     try {
       await connectMongo();
       startWorkers();
-      startSyncScheduler();
+      
+      // Em desenvolvimento, o scheduler pode causar loops indesejados devido ao HMR do Next.js
+      if (process.env.NODE_ENV !== 'development') {
+        startSyncScheduler();
+      } else {
+        console.log('[Instrumentation] Scheduler ignorado em modo de desenvolvimento.');
+      }
       console.log('[Instrumentation] Serviços de background inicializados com sucesso.');
     } catch (err) {
       console.error('[Instrumentation] Erro ao inicializar serviços de background:', err);

@@ -18,6 +18,7 @@ export function useWebhooks() {
       const rows: WebhookResult[] = [
         ...(Array.isArray(data.shopify) ? data.shopify : []),
         ...(Array.isArray(data.woocommerce) ? data.woocommerce : []),
+        ...(Array.isArray(data.lexos) ? data.lexos : []),
       ];
       setResults(rows);
     } catch (e) {
@@ -27,7 +28,7 @@ export function useWebhooks() {
     }
   }, []);
 
-  const sync = useCallback(async (force = false) => {
+  const sync = useCallback(async (force = false, platforms: string[] = ['shopify', 'woocommerce', 'lexos']) => {
     if (
       force &&
       !window.confirm(
@@ -39,7 +40,7 @@ export function useWebhooks() {
     setError('');
     setResults([]);
     try {
-      const data = await syncWebhooks(force);
+      const data = await syncWebhooks(force, platforms);
       setDomain(data.domain);
       setResults(data.results);
     } catch (e) {

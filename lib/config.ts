@@ -244,6 +244,9 @@ function saveConfig() {
       },
       lexos: {
         webhookToken: encrypt(dynamicConfig.lexos.webhookToken),
+        apiToken: encrypt(dynamicConfig.lexos.apiToken),
+        integrationKey: encrypt(dynamicConfig.lexos.integrationKey),
+        url: dynamicConfig.lexos.url,
       },
       domain: dynamicConfig.domain,
       scheduler: dynamicConfig.scheduler,

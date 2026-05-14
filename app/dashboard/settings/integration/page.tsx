@@ -9,6 +9,11 @@ import {
   IconWorldWww,
   IconDeviceFloppy,
   IconBrandWordpress,
+  IconBox,
+  IconFlask,
+  IconCheck,
+  IconX,
+  IconAlertTriangle,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -57,6 +62,8 @@ export default function SettingsIntegrationPage() {
   const [originalConfig, setOriginalConfig] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<null | { success: boolean; status: number; payloadEnviado: unknown; respostaWebhook: unknown; error?: string }>(null)
 
   useEffect(() => {
     fetch("/api/dashboard/config")
@@ -71,6 +78,9 @@ export default function SettingsIntegrationPage() {
         if (displayData.woo?.key) displayData.woo.key = "********"
         if (displayData.woo?.secret) displayData.woo.secret = "********"
         if (displayData.woo?.webhookSecret) displayData.woo.webhookSecret = "********"
+        if (displayData.lexos?.webhookToken) displayData.lexos.webhookToken = "********"
+        if (displayData.lexos?.apiToken) displayData.lexos.apiToken = "********"
+        if (displayData.lexos?.integrationKey) displayData.lexos.integrationKey = "********"
         
         setConfig(displayData)
         setLoading(false)
@@ -90,6 +100,30 @@ export default function SettingsIntegrationPage() {
         [field]: value
       }
     }))
+  }
+
+  async function handleTestLexosWebhook(event: 'pedido.criado' | 'pedido.atualizado') {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/dashboard/test/lexos-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event }),
+      })
+      const data = await res.json()
+      setTestResult(data)
+      if (data.success) {
+        toast.success(`Webhook de teste (${event}) enviado com sucesso!`)
+      } else {
+        toast.error(`Falha no webhook de teste: HTTP ${data.status}`)
+      }
+    } catch (err) {
+      toast.error('Erro ao enviar webhook de teste')
+      setTestResult({ success: false, status: 0, payloadEnviado: null, respostaWebhook: null, error: (err as Error).message })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const updateDomain = (value: string) => {
@@ -121,6 +155,15 @@ export default function SettingsIntegrationPage() {
       }
       if (payload.woo.webhookSecret === "********") {
         payload.woo.webhookSecret = originalConfig.woo.webhookSecret
+      }
+      if (payload.lexos.webhookToken === "********") {
+        payload.lexos.webhookToken = originalConfig.lexos.webhookToken
+      }
+      if (payload.lexos.apiToken === "********") {
+        payload.lexos.apiToken = originalConfig.lexos.apiToken
+      }
+      if (payload.lexos.integrationKey === "********") {
+        payload.lexos.integrationKey = originalConfig.lexos.integrationKey
       }
 
       const res = await fetch("/api/dashboard/config", {
@@ -248,6 +291,60 @@ export default function SettingsIntegrationPage() {
         </CardContent>
       </Card>
 
+      {/* Lexos */}
+      <Card>
+        <CardHeader className="border-b pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <IconBox className="h-5 w-5 text-[#f0801a]" />
+            Lexos Hub
+          </CardTitle>
+          <CardDescription>
+            Configurações da integração com Lexos Hub (ERP).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5 pt-5">
+          <SettingField
+            label="URL da API"
+            description="URL base da API Lexos (padrão: https://api.lexos.com.br)"
+            id="lexos-url"
+            name="lexos-url"
+            placeholder="https://api.lexos.com.br"
+            value={config.lexos?.url || ""}
+            onChange={(val) => updateConfig("lexos", "url", val)}
+          />
+          <SettingField
+            label="API Token"
+            description="Token JWT de autenticação na API da Lexos"
+            id="lexos-api-token"
+            name="lexos-api-token"
+            type="password"
+            placeholder="••••••••"
+            value={config.lexos?.apiToken || ""}
+            onChange={(val) => updateConfig("lexos", "apiToken", val)}
+          />
+          <SettingField
+            label="Integration Key"
+            description="Chave da integração Lexos (Header: Chave)"
+            id="lexos-integration-key"
+            name="lexos-integration-key"
+            type="password"
+            placeholder="••••••••"
+            value={config.lexos?.integrationKey || ""}
+            onChange={(val) => updateConfig("lexos", "integrationKey", val)}
+          />
+          <SettingField
+            label="Webhook Token (Opcional)"
+            description="Token para validação de segurança nos webhooks recebidos da Lexos"
+            id="lexos-webhook-token"
+            name="lexos-webhook-token"
+            type="password"
+            placeholder="••••••••"
+            value={config.lexos?.webhookToken || ""}
+            onChange={(val) => updateConfig("lexos", "webhookToken", val)}
+          />
+        </CardContent>
+      </Card>
+
       {/* Domínio */}
       <Card>
         <CardHeader className="border-b pb-4">
@@ -269,6 +366,76 @@ export default function SettingsIntegrationPage() {
             value={config.domain || ""}
             onChange={(val) => updateDomain(val)}
           />
+        </CardContent>
+      </Card>
+
+      {/* Teste de Webhook Lexos */}
+      <Card className="border-dashed border-amber-500/40 bg-amber-500/5">
+        <CardHeader className="border-b pb-4">
+          <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <IconFlask className="h-5 w-5" />
+            Teste de Webhook Lexos
+          </CardTitle>
+          <CardDescription>
+            Simula um pedido de teste enviado pela Lexos para o webhook do integrador. Útil para validar a configuração sem depender da Lexos real.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 pt-5">
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-amber-500/50 hover:bg-amber-500/10"
+              onClick={() => handleTestLexosWebhook('pedido.criado')}
+              disabled={testing}
+            >
+              <IconFlask className="h-4 w-4" />
+              {testing ? 'Enviando...' : 'Testar pedido.criado'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-amber-500/50 hover:bg-amber-500/10"
+              onClick={() => handleTestLexosWebhook('pedido.atualizado')}
+              disabled={testing}
+            >
+              <IconFlask className="h-4 w-4" />
+              {testing ? 'Enviando...' : 'Testar pedido.atualizado'}
+            </Button>
+          </div>
+
+          {testResult && (
+            <div className={`rounded-md border p-4 flex flex-col gap-3 text-sm ${
+              testResult.success
+                ? 'bg-green-500/5 border-green-500/30'
+                : 'bg-destructive/5 border-destructive/30'
+            }`}>
+              <div className="flex items-center gap-2 font-medium">
+                {testResult.success
+                  ? <><IconCheck className="h-4 w-4 text-green-500" /> <span className="text-green-600 dark:text-green-400">Webhook recebido com sucesso (HTTP {testResult.status})</span></>
+                  : <><IconX className="h-4 w-4 text-destructive" /> <span className="text-destructive">Falha (HTTP {testResult.status || '—'})</span></>
+                }
+              </div>
+              {testResult.error && (
+                <div className="flex items-start gap-2 text-destructive">
+                  <IconAlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <p>{testResult.error}</p>
+                </div>
+              )}
+              {Boolean(testResult.respostaWebhook) && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resposta do Webhook</span>
+                  <pre className="text-xs bg-muted rounded p-2 overflow-auto max-h-36">{JSON.stringify(testResult.respostaWebhook as object, null, 2)}</pre>
+                </div>
+              )}
+              {Boolean(testResult.payloadEnviado) && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Ver payload enviado</summary>
+                  <pre className="mt-2 bg-muted rounded p-2 overflow-auto max-h-48">{JSON.stringify(testResult.payloadEnviado as object, null, 2)}</pre>
+                </details>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

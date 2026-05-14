@@ -54,6 +54,12 @@ export async function handleProductRecentAudit(): Promise<void> {
 
   try {
     const shopifyPage = await getRecentShopifyProducts(50);
+    
+    if (!shopifyPage?.data?.productVariants) {
+      console.error('[Audit] Falha ao buscar produtos do Shopify: Payload inválido ou erro na API', JSON.stringify(shopifyPage));
+      return;
+    }
+
     const variants = shopifyPage.data.productVariants.edges.map(e => e.node);
     totalProcessed = variants.length;
 

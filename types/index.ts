@@ -115,7 +115,7 @@ export interface QueueStatsResponse {
 export type WebhookStatusValue = 'ok' | 'created' | 'deleted' | 'error';
 
 export interface WebhookResult {
-  platform: 'shopify' | 'woocommerce';
+  platform: 'shopify' | 'woocommerce' | 'lexos';
   topic: string;
   endpoint: string;
   status?: WebhookStatusValue;
@@ -130,6 +130,7 @@ export interface WebhookStatusResponse {
   domain: string;
   shopify: WebhookResult[] | { error: string };
   woocommerce: WebhookResult[] | { error: string };
+  lexos?: WebhookResult[] | { error: string };
 }
 
 export interface WebhookSyncResponse {

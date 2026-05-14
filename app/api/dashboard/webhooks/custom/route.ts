@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDashboardAuth } from '@/lib/auth/dashboard';
-import { createShopifyWebhook, createWooWebhook } from '@/lib/services/webhooksManager';
+import { createShopifyWebhook, createWooWebhook, createLexosWebhook } from '@/lib/services/webhooksManager';
 
 export async function POST(request: NextRequest) {
   const auth = await requireDashboardAuth(request);
@@ -19,6 +19,9 @@ export async function POST(request: NextRequest) {
       id = await createShopifyWebhook(topic, url);
     } else if (platform === 'woocommerce') {
       id = await createWooWebhook(topic, url);
+    } else if (platform === 'lexos') {
+      await createLexosWebhook(url);
+      id = 'lexos-central';
     } else {
       return NextResponse.json({ error: 'Plataforma inválida.' }, { status: 400 });
     }
