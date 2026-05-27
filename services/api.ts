@@ -7,6 +7,8 @@ import type {
   DashboardConfig,
   LogEntitiesResponse,
   LogEntityDetail,
+  DashboardStatsResponse,
+  StatsParams,
 } from '@/types';
 
 // Como o frontend e o backend agora são o mesmo app Next.js, 
@@ -127,4 +129,15 @@ export async function syncWebhooks(force = false, platforms: string[] = ['shopif
 
 export async function getDashboardConfig(): Promise<DashboardConfig> {
   return apiFetch<DashboardConfig>('/api/dashboard/config');
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+export async function getDashboardStats(params: StatsParams | number = 30): Promise<DashboardStatsResponse> {
+  const p: StatsParams = typeof params === 'number' ? { days: params } : params;
+  const sp = new URLSearchParams();
+  if (p.hours)           sp.set('hours', String(p.hours));
+  else if (p.from && p.to) { sp.set('from', p.from); sp.set('to', p.to); }
+  else if (p.days)       sp.set('days', String(p.days));
+  return apiFetch<DashboardStatsResponse>(`/api/dashboard/stats?${sp}`);
 }

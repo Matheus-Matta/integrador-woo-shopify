@@ -11,6 +11,7 @@ import {
   IconSettings,
   IconPlug,
   IconClock,
+  IconBell,
 } from "@tabler/icons-react"
 import Link from "next/link"
 
@@ -83,6 +84,11 @@ const data = {
       title: "Config. Scheduler",
       url: "/dashboard/settings/scheduler",
       icon: IconClock,
+    },
+    {
+      title: "Push Notifications",
+      url: "/dashboard/push-notifications",
+      icon: IconBell,
     },
     {
       title: "Ajuda",

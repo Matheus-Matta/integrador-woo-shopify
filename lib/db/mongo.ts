@@ -55,17 +55,65 @@ const logErrorSchema = new Schema({
   timestamp: { type: Date, default: Date.now, expires: '30d' },
 });
 
+const notificationTemplateSchema = new Schema({
+  name:      { type: String, required: true },
+  title:     { type: String, required: true },
+  body:      { type: String, required: true },
+  url:       { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+const notificationScheduleSchema = new Schema({
+  templateId:   { type: Schema.Types.ObjectId, required: true, index: true },
+  templateName: { type: String, default: '' },
+  mode:         { type: String, enum: ['broadcast', 'individual'], required: true },
+  userId:       { type: String, default: '' },
+  frequency:    { type: String, required: true },
+  active:       { type: Boolean, default: true },
+  repeatKey:    { type: String, default: '' },
+  lgpdConsent:  { type: Boolean, default: false },
+  createdAt:    { type: Date, default: Date.now },
+});
+
+const deviceTokenSchema = new Schema({
+  token:     { type: String, required: true, unique: true }, // chave única — app envia antes do login
+  platform:  { type: String, enum: ['android', 'ios', 'unknown'], default: 'unknown' },
+  userId:    { type: String, default: null, index: true, sparse: true }, // null até o usuário fazer login
+  label:     { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+const pushNotificationLogSchema = new Schema({
+  to:      { type: Schema.Types.Mixed, required: true },
+  title:   { type: String, required: true },
+  body:    { type: String, required: true },
+  data:    { type: Schema.Types.Mixed },
+  result:  { type: Schema.Types.Mixed },
+  sentBy:  { type: String, default: 'dashboard' },
+  sentAt:  { type: Date, default: Date.now, expires: '90d' },
+});
+
 // ─── Models ────────────────────────────────────────────────────────────────
 
 export type LogProduct  = InferSchemaType<typeof logProductSchema>  & Document;
 export type LogCustomer = InferSchemaType<typeof logCustomerSchema> & Document;
 export type LogOrder    = InferSchemaType<typeof logOrderSchema>    & Document;
 export type LogError    = InferSchemaType<typeof logErrorSchema>    & Document;
+export type DeviceToken = InferSchemaType<typeof deviceTokenSchema> & Document;
+export type PushNotificationLog = InferSchemaType<typeof pushNotificationLogSchema> & Document;
+export type NotificationTemplate = InferSchemaType<typeof notificationTemplateSchema> & Document;
+export type NotificationSchedule = InferSchemaType<typeof notificationScheduleSchema> & Document;
 
 export const LogProductModel  = mongoose.models.logs_products || model<LogProduct>('logs_products',  logProductSchema);
 export const LogCustomerModel = mongoose.models.logs_customers || model<LogCustomer>('logs_customers', logCustomerSchema);
 export const LogOrderModel    = mongoose.models.logs_orders || model<LogOrder>('logs_orders',    logOrderSchema);
 export const LogErrorModel    = mongoose.models.logs_errors || model<LogError>('logs_errors',    logErrorSchema);
+export const DeviceTokenModel = mongoose.models.device_tokens || model<DeviceToken>('device_tokens', deviceTokenSchema);
+export const PushNotificationLogModel = mongoose.models.push_notification_logs || model<PushNotificationLog>('push_notification_logs', pushNotificationLogSchema);
+export const NotificationTemplateModel = mongoose.models.notification_templates || model<NotificationTemplate>('notification_templates', notificationTemplateSchema);
+export const NotificationScheduleModel = mongoose.models.notification_schedules || model<NotificationSchedule>('notification_schedules', notificationScheduleSchema);
 
 // ─── Connection ────────────────────────────────────────────────────────────
 

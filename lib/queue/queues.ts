@@ -44,6 +44,23 @@ export function getProductsQueue(): Queue {
   return _productsQueue;
 }
 
+let _notificationsQueue: Queue | undefined;
+
+export function getNotificationsQueue(): Queue {
+  if (!_notificationsQueue) {
+    _notificationsQueue = new Queue('notifications', {
+      connection: getConnection(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: { count: 200 },
+        removeOnFail: { count: 100 },
+      },
+    });
+  }
+  return _notificationsQueue;
+}
+
 // Re-exporta como getters para compatibilidade com imports existentes
 export const ordersQueue = new Proxy({} as Queue, {
   get(_t, prop) { return (getOrdersQueue() as never)[prop as keyof Queue]; },

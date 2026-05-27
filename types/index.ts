@@ -154,6 +154,40 @@ export interface WsQueueEvent {
 
 export type WsEvent = WsLogEvent | WsQueueEvent | { type: 'error'; message: string };
 
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+export interface DayStat {
+  success: number;
+  error: number;
+}
+
+export interface DashboardStatsResponse {
+  granularity: 'hour' | 'day';
+  summary: {
+    orders:    { today: DayStat; yesterday: DayStat };
+    products:  { today: DayStat; yesterday: DayStat };
+    customers: { today: DayStat; yesterday: DayStat };
+    errors:    { today: number;  yesterday: number  };
+  };
+  chart: {
+    date:        string; // "YYYY-MM-DD" for daily, "YYYY-MM-DDTHH:00:00" for hourly
+    orders:      number;
+    orderErrors: number;
+    products:    number;
+    customers:   number;
+    errors:      number;
+  }[];
+}
+
+// ─── Stats fetch params ───────────────────────────────────────────────────────
+
+export interface StatsParams {
+  hours?: number;
+  days?:  number;
+  from?:  string; // YYYY-MM-DD
+  to?:    string; // YYYY-MM-DD
+}
+
 // ─── Config API ───────────────────────────────────────────────────────────────
 
 export interface DashboardConfig {

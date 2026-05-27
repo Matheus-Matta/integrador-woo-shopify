@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="bg-[#0f1117] text-gray-100 min-h-screen">
+      <body className="bg-surface-900 text-gray-100 min-h-screen font-sans antialiased">
         <ReactQueryProvider>
           <ToastProvider>{children}</ToastProvider>
         </ReactQueryProvider>

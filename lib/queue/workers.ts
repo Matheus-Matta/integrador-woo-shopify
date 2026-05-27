@@ -4,6 +4,8 @@ import { config } from '../config';
 import { logEmitter, QueueEvent } from '../services/emitter';
 import { logError } from '../services/logger';
 import { ordersQueue, productsQueue } from './queues';
+import { connectMongo, NotificationScheduleModel, NotificationTemplateModel } from '../db/mongo';
+import { broadcastPush, sendPushToUser } from '../services/pushNotifications';
 import {
   handleShopCustomerCreate,
   handleShopCustomerUpdate,
@@ -116,6 +118,46 @@ const productsWorker = new Worker(
   { connection, concurrency: 1 },
 );
 
+// ─── Worker Fila 3: notifications ─────────────────────────────────────────
+
+const notificationsWorker = new Worker(
+  'notifications',
+  async (job: Job) => {
+    const { scheduleId } = job.data as { scheduleId: string };
+    console.log(`[Worker] notifications/push — scheduleId=${scheduleId} — jobId=${job.id}`);
+
+    await connectMongo();
+
+    const schedule = await NotificationScheduleModel.findById(scheduleId).lean();
+    if (!schedule || !schedule.active) {
+      console.log(`[Worker] notifications — agendamento inativo/não encontrado, ignorando`);
+      return;
+    }
+
+    const template = await NotificationTemplateModel.findById(schedule.templateId).lean();
+    if (!template) throw new Error(`Template ${String(schedule.templateId)} não encontrado`);
+
+    const data = (template.url as string) ? { url: template.url as string } : undefined;
+
+    if (schedule.mode === 'broadcast') {
+      const result = await broadcastPush(template.title as string, template.body as string, data, 'schedule-broadcast');
+      console.log(`[Worker] notifications — broadcast concluído para ${result.sent} dispositivo(s)`);
+    } else if (schedule.userId) {
+      const result = await sendPushToUser(schedule.userId as string, template.title as string, template.body as string, data, 'schedule');
+      console.log(`[Worker] notifications — individual concluído: sent=${result.sent}`);
+    }
+  },
+  { connection, concurrency: 2 }
+);
+
+notificationsWorker.on('completed', (job: Job) => {
+  console.log(`[Worker] notifications/${job.name} concluído ✓ — jobId=${job.id}`);
+});
+
+notificationsWorker.on('failed', (job: Job | undefined, err: Error) => {
+  console.error(`[Worker] notifications/${job?.name ?? 'unknown'} FALHOU — ${err.message}`);
+});
+
 // ─── Eventos dos workers ───────────────────────────────────────────────────
 
 interface WorkerEntry {
@@ -188,10 +230,10 @@ for (const { worker, queue, name } of workerEntries) {
 }
 
 export function startWorkers() {
-  console.log('[Queue] Workers iniciados: orders (concurrency=1), products (concurrency=1)');
+  console.log('[Queue] Workers iniciados: orders (concurrency=1), products (concurrency=1), notifications (concurrency=2)');
 }
 
-export { ordersWorker, productsWorker };
+export { ordersWorker, productsWorker, notificationsWorker };
 
 // ─── Utils: extrair entidade básica do job.data ────────────────────────────
 
