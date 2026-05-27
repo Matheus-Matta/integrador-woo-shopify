@@ -141,10 +141,11 @@ const notificationsWorker = new Worker(
 
     if (schedule.mode === 'broadcast') {
       const result = await broadcastPush(template.title as string, template.body as string, data, 'schedule-broadcast');
-      console.log(`[Worker] notifications — broadcast concluído para ${result.sent} dispositivo(s)`);
+      console.log(`[Worker] notifications — broadcast concluído: sent=${result.sent} failed=${result.failed}`);
+      if (result.errors?.length) console.error('[Worker] notifications — erros de entrega:', JSON.stringify(result.errors));
     } else if (schedule.userId) {
       const result = await sendPushToUser(schedule.userId as string, template.title as string, template.body as string, data, 'schedule');
-      console.log(`[Worker] notifications — individual concluído: sent=${result.sent}`);
+      console.log(`[Worker] notifications — individual concluído: sent=${result.sent} error=${result.error ?? 'nenhum'}`);
     }
   },
   { connection, concurrency: 2 }

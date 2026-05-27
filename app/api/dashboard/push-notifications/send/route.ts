@@ -16,6 +16,13 @@ export async function POST(req: NextRequest) {
 
     if (mode === 'broadcast') {
       const result = await broadcastPush(title, msgBody, data);
+      // Se todos falharam, retorna erro com detalhes
+      if (result.sent === 0 && result.failed > 0) {
+        return NextResponse.json(
+          { error: `Todos os envios falharam. Primeiro erro: ${result.errors[0]?.error ?? 'desconhecido'}`, ...result },
+          { status: 502 },
+        );
+      }
       return NextResponse.json(result);
     }
 
@@ -24,7 +31,11 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await sendPushToUser(userId, title, msgBody, data);
+    if (!result.sent) {
+      return NextResponse.json({ error: result.error ?? 'Falha ao enviar' }, { status: 502 });
+    }
     return NextResponse.json(result);
+
   } catch (error) {
     console.error('[push-send]', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
