@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import {
   IconBrandShopee,
   IconWorldWww,
@@ -14,6 +15,7 @@ import {
   IconCheck,
   IconX,
   IconAlertTriangle,
+  IconWebhook,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -133,6 +135,16 @@ export default function SettingsIntegrationPage() {
     }))
   }
 
+  const updateWooCompatibleApi = (field: string, value: boolean) => {
+    setConfig((prev: any) => ({
+      ...prev,
+      wooCompatibleApi: {
+        ...prev.wooCompatibleApi,
+        [field]: value,
+      },
+    }))
+  }
+
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setSaving(true)
@@ -234,6 +246,51 @@ export default function SettingsIntegrationPage() {
             value={config.shopify.webhookSecret || ""}
             onChange={(val) => updateConfig("shopify", "webhookSecret", val)}
           />
+        </CardContent>
+      </Card>
+
+      {/* API Woo compativel */}
+      <Card>
+        <CardHeader className="border-b pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <IconWebhook className="h-5 w-5 text-primary" />
+            API Woo compativel
+          </CardTitle>
+          <CardDescription>
+            Controla se os webhooks do Shopify tambem salvam produtos, clientes e pedidos no MongoDB ja convertidos para o formato WooCommerce.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5 pt-5">
+          <div className="flex items-center justify-between gap-4 rounded-md border p-4 max-w-2xl">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="woo-compatible-shopify-sync" className="text-sm font-medium text-foreground">
+                Sincronizar webhooks Shopify
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Quando ativo, os webhooks de products, customers e orders do Shopify gravam tambem nas colecoes compatíveis com WooCommerce.
+              </p>
+            </div>
+            <Switch
+              id="woo-compatible-shopify-sync"
+              checked={Boolean(config.wooCompatibleApi?.shopifySyncActive)}
+              onCheckedChange={(checked) => updateWooCompatibleApi("shopifySyncActive", Boolean(checked))}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-md border border-amber-500/30 bg-amber-500/5 p-4 max-w-2xl">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="woo-legacy-webhooks" className="text-sm font-medium text-foreground">
+                Manter webhooks Woo legados ativos
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Mantem os endpoints antigos do WooCommerce funcionando durante a migracao. Desligue somente quando o ERP estiver usando a API compativel e o Shopify for a origem principal.
+              </p>
+            </div>
+            <Switch
+              id="woo-legacy-webhooks"
+              checked={Boolean(config.wooCompatibleApi?.legacyWooWebhooksActive)}
+              onCheckedChange={(checked) => updateWooCompatibleApi("legacyWooWebhooksActive", Boolean(checked))}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -451,4 +508,3 @@ export default function SettingsIntegrationPage() {
     </form>
   )
 }
-

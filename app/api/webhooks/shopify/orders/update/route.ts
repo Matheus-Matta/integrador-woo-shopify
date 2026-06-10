@@ -5,6 +5,7 @@ import { verifyShopifyHmac } from '@/lib/utils/webhook-validator';
 import { ordersQueue } from '@/lib/queue/queues';
 import { logError, logOrder } from '@/lib/services/logger';
 import { deduplicateDelivery, deduplicateFingerprint } from '@/lib/services/webhookDedup';
+import { syncShopifyWebhookToWooCompat } from '@/services/woo-compatible-shopify-sync';
 
 function parseOrderForLog(rawBody: string): Record<string, unknown> | null {
   try {
@@ -119,9 +120,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ skipped: true, reason: 'duplicate-payload' });
     }
 
+    const wooCompatibleSync = await syncShopifyWebhookToWooCompat('order', order ?? {});
+
     const job = await ordersQueue.add('shop-order-update', order ?? {});
     console.info(`[shop-order-update] enfileirado - jobId=${job.id} shopifyOrderId=${shopifyOrderId}`);
-    return NextResponse.json({ queued: true, jobId: job.id, shopifyOrderId }, { status: 202 });
+    return NextResponse.json({ queued: true, jobId: job.id, shopifyOrderId, wooCompatibleSync }, { status: 202 });
   } catch (err) {
     console.error(`[shop-order-update] erro interno - IP: ${ip}`, err);
     return NextResponse.json({ error: 'Erro interno ao enfileirar job', detail: (err as Error).message }, { status: 500 });

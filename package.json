@@ -7,6 +7,8 @@
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck",
+    "test:woo-api": "node scripts/test-woo-api.mjs",
+    "test:shopify-webhook-sync": "node scripts/test-shopify-webhook-sync.mjs",
     "start": "next start"
   },
   "dependencies": {

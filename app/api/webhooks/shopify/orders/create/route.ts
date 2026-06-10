@@ -5,6 +5,7 @@ import { ordersQueue } from '@/lib/queue/queues';
 import { logError, logOrder } from '@/lib/services/logger';
 import { s } from '@/lib/utils/helpers';
 import { deduplicateDelivery, deduplicateOrder } from '@/lib/services/webhookDedup';
+import { syncShopifyWebhookToWooCompat } from '@/services/woo-compatible-shopify-sync';
 
 function parseOrderForLog(rawBody: string): Record<string, unknown> | null {
   try {
@@ -126,14 +127,16 @@ export async function POST(req: NextRequest) {
     // ── Enfileira com jobId fixo (BullMQ garante unicidade do jobId) ────────
     // Se por algum motivo o Redis falhar e o mesmo orderId chegar novamente,
     // o jobId fixo impede que o BullMQ crie um job duplicado na fila.
-    const jobId = `shop-order-create:${shopifyOrderId}`;
+    const wooCompatibleSync = await syncShopifyWebhookToWooCompat('order', order ?? {});
+
+    const jobId = `shop-order-create-${shopifyOrderId}`;
     const job = await ordersQueue.add('shop-order-create', order ?? {}, {
       jobId,
       // Não coloca em retentativa aqui — o worker cuida disso
     });
 
     console.info(`[shop-order-create] enfileirado - jobId=${job.id} shopifyOrderId=${shopifyOrderId}`);
-    return NextResponse.json({ queued: true, jobId: job.id, shopifyOrderId }, { status: 202 });
+    return NextResponse.json({ queued: true, jobId: job.id, shopifyOrderId, wooCompatibleSync }, { status: 202 });
   } catch (err) {
     console.error(`[shop-order-create] erro interno - IP: ${ip}`, err);
     return NextResponse.json({ error: 'Erro interno ao enfileirar job', detail: (err as Error).message }, { status: 500 });

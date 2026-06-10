@@ -55,7 +55,7 @@ export function LogsEntityTable({ type }: LogsEntityTableProps) {
       product: 'products',
       customer: 'customers',
     };
-    router.push(`/dashboard/${pathMap[type]}/${encodeURIComponent(id)}`);
+    router.push(`/dashboard/logs/${pathMap[type]}/${encodeURIComponent(id)}`);
   };
 
   return (

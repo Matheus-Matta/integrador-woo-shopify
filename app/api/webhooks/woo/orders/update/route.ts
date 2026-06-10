@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDashboardAuth } from '@/lib/auth/dashboard';
+import { config } from '@/lib/config';
 import { verifyWooHmac } from '@/lib/utils/webhook-validator';
 import { ordersQueue } from '@/lib/queue/queues';
 import { logError, logOrder } from '@/lib/services/logger';
@@ -20,11 +21,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
   return NextResponse.json({
-    active: true,
+    active: config.wooCompatibleApi.legacyWooWebhooksActive,
+    legacy: true,
+    deprecated: true,
     webhook: 'woo-order-update',
     route: '/api/webhooks/woo/orders/update',
     method: 'POST',
-    description: 'Recebe notificacoes de atualizacao de pedido do WooCommerce',
+    description: 'Webhook legado do WooCommerce mantido temporariamente durante a migracao para Shopify -> API Woo compativel',
   });
 }
 
@@ -33,6 +36,11 @@ export async function POST(req: NextRequest) {
   console.log(`[woo-order-update] POST recebido - IP: ${ip}`);
 
   try {
+    if (!config.wooCompatibleApi.legacyWooWebhooksActive) {
+      console.info('[woo-order-update] webhook legado desativado por configuracao - ignorado');
+      return NextResponse.json({ skipped: true, legacy: true, reason: 'woo-legacy-webhook-disabled' });
+    }
+
     const rawBody = await req.arrayBuffer();
     const buffer = Buffer.from(rawBody);
     const sig = req.headers.get('x-wc-webhook-signature') || '';

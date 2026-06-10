@@ -2,16 +2,17 @@
 
 import * as React from "react"
 import {
+  IconBell,
+  IconClock,
   IconDashboard,
-  IconListDetails,
-  IconWebhook,
-  IconAlertTriangle,
   IconHelp,
   IconInnerShadowTop,
+  IconListDetails,
+  IconPackage,
   IconSettings,
-  IconPlug,
-  IconClock,
-  IconBell,
+  IconShoppingCart,
+  IconUsers,
+  IconWebhook,
 } from "@tabler/icons-react"
 import Link from "next/link"
 
@@ -41,22 +42,37 @@ const data = {
       icon: IconDashboard,
     },
     {
-      title: "Integração",
+      title: "Produtos",
+      url: "/dashboard/products",
+      icon: IconPackage,
+    },
+    {
+      title: "Pedidos",
+      url: "/dashboard/orders",
+      icon: IconShoppingCart,
+    },
+    {
+      title: "Clientes",
+      url: "/dashboard/customers",
+      icon: IconUsers,
+    },
+    {
+      title: "Logs",
       url: "#",
-      icon: IconPlug,
+      icon: IconListDetails,
       isActive: true,
       items: [
         {
-          title: "Clientes",
-          url: "/dashboard/customers",
+          title: "Logs de Produtos",
+          url: "/dashboard/logs/products",
         },
         {
-          title: "Produtos",
-          url: "/dashboard/products",
+          title: "Logs de Pedidos",
+          url: "/dashboard/logs/orders",
         },
         {
-          title: "Pedidos",
-          url: "/dashboard/orders",
+          title: "Logs de Clientes",
+          url: "/dashboard/logs/customers",
         },
         {
           title: "Filas",
@@ -71,7 +87,7 @@ const data = {
   ],
   navSecondary: [
     {
-      title: "Config. Integração",
+      title: "Config. Integracao",
       url: "/dashboard/settings/integration",
       icon: IconSettings,
     },

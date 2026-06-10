@@ -3,6 +3,7 @@ import { productsQueue } from '@/lib/queue/queues';
 import { logError } from '@/lib/services/logger';
 import { verifyShopifyHmac } from '@/lib/utils/webhook-validator';
 import { deduplicateDelivery } from '@/lib/services/webhookDedup';
+import { syncShopifyWebhookToWooCompat } from '@/services/woo-compatible-shopify-sync';
 
 export async function GET() {
   return NextResponse.json({
@@ -49,12 +50,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'payload inválido' }, { status: 400 });
     }
 
+    const wooCompatibleSync = await syncShopifyWebhookToWooCompat('product', payload);
+
     const job = await productsQueue.add('shop-product-to-lexos', payload, {
-      jobId: `shop-product-create:${productId}:${Date.now()}`,
+      jobId: `shop-product-create-${productId}-${Date.now()}`,
     });
 
     console.info(`[shopify-products-create] Job enfileirado: ${job.id} para o produto ${productId}`);
-    return NextResponse.json({ received: true, jobId: job.id }, { status: 202 });
+    return NextResponse.json({ received: true, jobId: job.id, wooCompatibleSync }, { status: 202 });
   } catch (err) {
     console.error(`[shopify-products-create] Erro: ${(err as Error).message}`);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

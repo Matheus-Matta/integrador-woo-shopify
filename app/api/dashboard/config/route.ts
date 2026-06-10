@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
     queueBackoffMs: config.queue.backoffDelay,
     rateLimitMax: config.rateLimit.max,
     rateLimitWindowMs: config.rateLimit.windowMs,
+    wooCompatibleApi: config.wooCompatibleApi,
   });
 }
 
@@ -76,6 +77,18 @@ export async function POST(request: NextRequest) {
       };
     }
     if (body.domain !== undefined) newConfig.domain = body.domain;
+    if (body.wooCompatibleApi) {
+      newConfig.wooCompatibleApi = {
+        shopifySyncActive:
+          body.wooCompatibleApi.shopifySyncActive !== undefined
+            ? Boolean(body.wooCompatibleApi.shopifySyncActive)
+            : config.wooCompatibleApi.shopifySyncActive,
+        legacyWooWebhooksActive:
+          body.wooCompatibleApi.legacyWooWebhooksActive !== undefined
+            ? Boolean(body.wooCompatibleApi.legacyWooWebhooksActive)
+            : config.wooCompatibleApi.legacyWooWebhooksActive,
+      };
+    }
 
     updateDynamicConfig(newConfig);
 

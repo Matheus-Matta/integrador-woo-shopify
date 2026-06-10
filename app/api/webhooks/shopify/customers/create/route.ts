@@ -4,6 +4,7 @@ import { verifyShopifyHmac } from '@/lib/utils/webhook-validator';
 import { ordersQueue } from '@/lib/queue/queues';
 import { logError } from '@/lib/services/logger';
 import { deduplicateDelivery } from '@/lib/services/webhookDedup';
+import { syncShopifyWebhookToWooCompat } from '@/services/woo-compatible-shopify-sync';
 
 export async function GET(req: NextRequest) {
   const auth = await requireDashboardAuth(req);
@@ -49,9 +50,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email do cliente é obrigatorio' }, { status: 400 });
     }
 
+    const wooCompatibleSync = await syncShopifyWebhookToWooCompat('customer', data);
+
     const job = await ordersQueue.add('shop-customer-create', data);
     console.info(`[shop-customer-create] ✅ enfileirado — jobId=${job.id} shopifyCustomerId=${data.id}`);
-    return NextResponse.json({ queued: true, jobId: job.id, shopifyCustomerId: data.id }, { status: 202 });
+    return NextResponse.json({ queued: true, jobId: job.id, shopifyCustomerId: data.id, wooCompatibleSync }, { status: 202 });
   } catch (err) {
     console.error(`[shop-customer-create] 💥 erro interno — IP: ${ip}`, err);
     return NextResponse.json({ error: 'Erro interno ao enfileirar job', detail: (err as Error).message }, { status: 500 });

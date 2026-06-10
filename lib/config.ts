@@ -145,6 +145,10 @@ export interface SystemDynamicConfig {
     hour: number;
     minute: number;
   };
+  wooCompatibleApi: {
+    shopifySyncActive: boolean;
+    legacyWooWebhooksActive: boolean;
+  };
 }
 
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
@@ -183,6 +187,10 @@ function loadConfig() {
           active: rawConfig.productDailySync?.active ?? true,
           hour: rawConfig.productDailySync?.hour ?? 3,
           minute: rawConfig.productDailySync?.minute ?? 0,
+        },
+        wooCompatibleApi: {
+          shopifySyncActive: rawConfig.wooCompatibleApi?.shopifySyncActive ?? process.env.WOO_COMPAT_SHOPIFY_SYNC_ACTIVE !== 'false',
+          legacyWooWebhooksActive: rawConfig.wooCompatibleApi?.legacyWooWebhooksActive ?? process.env.WOO_LEGACY_WEBHOOKS_ACTIVE !== 'false',
         },
       };
     } catch (err) {
@@ -224,6 +232,10 @@ function initFromEnv() {
       hour: Number(process.env.PRODUCT_DAILY_SYNC_HOUR ?? 3),
       minute: Number(process.env.PRODUCT_DAILY_SYNC_MINUTE ?? 0),
     },
+    wooCompatibleApi: {
+      shopifySyncActive: process.env.WOO_COMPAT_SHOPIFY_SYNC_ACTIVE !== 'false',
+      legacyWooWebhooksActive: process.env.WOO_LEGACY_WEBHOOKS_ACTIVE !== 'false',
+    },
   };
   saveConfig();
 }
@@ -251,6 +263,7 @@ function saveConfig() {
       domain: dynamicConfig.domain,
       scheduler: dynamicConfig.scheduler,
       productDailySync: dynamicConfig.productDailySync,
+      wooCompatibleApi: dynamicConfig.wooCompatibleApi,
     };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(encryptedConfig, null, 2), 'utf-8');
   } catch (err) {
@@ -267,6 +280,7 @@ export function updateDynamicConfig(newConfig: Partial<SystemDynamicConfig>) {
     lexos: { ...dynamicConfig.lexos, ...(newConfig.lexos || {}) },
     scheduler: { ...dynamicConfig.scheduler, ...(newConfig.scheduler || {}) },
     productDailySync: { ...dynamicConfig.productDailySync, ...(newConfig.productDailySync || {}) },
+    wooCompatibleApi: { ...dynamicConfig.wooCompatibleApi, ...(newConfig.wooCompatibleApi || {}) },
   };
   saveConfig();
 }
@@ -285,6 +299,7 @@ export const config = {
   get domain() { return dynamicConfig.domain.replace(/\/$/, ''); },
   get scheduler() { return dynamicConfig.scheduler; },
   get productDailySync() { return dynamicConfig.productDailySync; },
+  get wooCompatibleApi() { return dynamicConfig.wooCompatibleApi; },
 
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',

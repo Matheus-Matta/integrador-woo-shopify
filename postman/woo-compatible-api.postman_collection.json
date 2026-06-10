@@ -1,0 +1,121 @@
+{
+  "info": {
+    "name": "Woo Compatible API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3005" },
+    { "key": "consumer_key", "value": "ck_local" },
+    { "key": "consumer_secret", "value": "cs_local" },
+    { "key": "product_id", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Status /wp-json",
+      "request": { "method": "GET", "url": "{{base_url}}/wp-json" }
+    },
+    {
+      "name": "Status /wp-json/wc/v3",
+      "request": { "method": "GET", "url": "{{base_url}}/wp-json/wc/v3" }
+    },
+    {
+      "name": "List Products",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/wp-json/wc/v3/products?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}&page=1&per_page=10"
+      }
+    },
+    {
+      "name": "Create Product",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Sofa Exemplo\",\n  \"slug\": \"sofa-exemplo\",\n  \"sku\": \"ABC123\",\n  \"type\": \"simple\",\n  \"status\": \"publish\",\n  \"price\": \"999.99\",\n  \"regular_price\": \"1199.99\",\n  \"sale_price\": \"999.99\",\n  \"stock_quantity\": 10,\n  \"stock_status\": \"instock\",\n  \"categories\": [{ \"id\": 1, \"name\": \"Sofas\", \"slug\": \"sofas\" }],\n  \"images\": [{ \"src\": \"https://cdn.exemplo.com/produto.jpg\", \"name\": \"produto.jpg\", \"alt\": \"\" }],\n  \"meta_data\": [{ \"key\": \"shopify_id\", \"value\": \"gid://shopify/Product/123\" }]\n}"
+        },
+        "url": "{{base_url}}/wp-json/wc/v3/products?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}"
+      }
+    },
+    {
+      "name": "Get Product",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/wp-json/wc/v3/products/{{product_id}}?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}"
+      }
+    },
+    {
+      "name": "Patch Product",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"price\": \"899.99\",\n  \"stock_quantity\": 5\n}" },
+        "url": "{{base_url}}/wp-json/wc/v3/products/{{product_id}}?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}"
+      }
+    },
+    {
+      "name": "Batch Products",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"create\": [{ \"name\": \"Produto Batch\", \"sku\": \"BATCH-1\", \"price\": \"10.00\" }],\n  \"update\": [{ \"id\": {{product_id}}, \"status\": \"draft\" }],\n  \"delete\": []\n}"
+        },
+        "url": "{{base_url}}/wp-json/wc/v3/products/batch?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}"
+      }
+    },
+    {
+      "name": "Delete Product",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/wp-json/wc/v3/products/{{product_id}}?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}&force=false"
+      }
+    },
+    {
+      "name": "List Customers",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/wp-json/wc/v3/customers?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}&page=1&per_page=10"
+      }
+    },
+    {
+      "name": "Create Customer",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"cliente@example.com\",\n  \"first_name\": \"Joao\",\n  \"last_name\": \"Silva\",\n  \"billing\": { \"email\": \"cliente@example.com\", \"first_name\": \"Joao\", \"last_name\": \"Silva\", \"phone\": \"21999999999\" },\n  \"shipping\": { \"first_name\": \"Joao\", \"last_name\": \"Silva\" }\n}"
+        },
+        "url": "{{base_url}}/wp-json/wc/v3/customers?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}"
+      }
+    },
+    {
+      "name": "List Orders",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/wp-json/wc/v3/orders?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}&page=1&per_page=10"
+      }
+    },
+    {
+      "name": "Create Order",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"number\": \"1001\",\n  \"status\": \"processing\",\n  \"currency\": \"BRL\",\n  \"total\": \"1049.80\",\n  \"billing\": { \"email\": \"cliente@example.com\", \"first_name\": \"Joao\", \"last_name\": \"Silva\", \"phone\": \"21999999999\" },\n  \"shipping\": { \"first_name\": \"Joao\", \"last_name\": \"Silva\" },\n  \"line_items\": [{ \"name\": \"Sofa Exemplo\", \"sku\": \"ABC123\", \"quantity\": 1, \"total\": \"999.90\", \"price\": 999.9 }]\n}"
+        },
+        "url": "{{base_url}}/wp-json/wc/v3/orders?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}"
+      }
+    },
+    {
+      "name": "Orders By Customer",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/wp-json/wc/v3/orders?consumer_key={{consumer_key}}&consumer_secret={{consumer_secret}}&customer=1&status=processing"
+      }
+    }
+  ]
+}
