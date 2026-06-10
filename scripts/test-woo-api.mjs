@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import jwt from 'jsonwebtoken';
 
 const baseUrl = process.env.WOO_COMPAT_BASE_URL || 'http://localhost:3005';
+const localEnv = readLocalEnv();
 const consumerKey = process.env.DEFAULT_CONSUMER_KEY || 'ck_local';
 const consumerSecret = process.env.DEFAULT_CONSUMER_SECRET || 'cs_local';
+const jwtSecret = process.env.JWT_SECRET || localEnv.JWT_SECRET;
+const apiJwtUser = process.env.WOO_API_JWT_USER || localEnv.WOO_API_JWT_USER;
+const apiJwtPassword = process.env.WOO_API_JWT_PASSWORD || localEnv.WOO_API_JWT_PASSWORD;
 const authQuery = `consumer_key=${encodeURIComponent(consumerKey)}&consumer_secret=${encodeURIComponent(consumerSecret)}`;
 const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -16,6 +21,23 @@ const createdIds = {
   attributes: [],
   attributeTerms: [],
 };
+
+function readLocalEnv() {
+  if (!fs.existsSync('.env')) return {};
+  return Object.fromEntries(
+    fs
+      .readFileSync('.env', 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && line.includes('='))
+      .map((line) => {
+        const separator = line.indexOf('=');
+        const key = line.slice(0, separator).trim();
+        const value = line.slice(separator + 1).trim().replace(/^['"]|['"]$/g, '');
+        return [key, value];
+      })
+  );
+}
 
 function withAuth(path) {
   const separator = path.includes('?') ? '&' : '?';
@@ -88,6 +110,7 @@ async function testStatusAndAuth() {
   const root = await requestRaw('/wp-json');
   assert.equal(root.response.ok, true, '/wp-json should be public');
   assert.equal(Array.isArray(root.body.namespaces), true, '/wp-json should expose namespaces');
+  assert.equal(root.body.namespaces.includes('jwt-auth/v1'), true, '/wp-json should expose jwt-auth/v1');
 
   const wc = await requestRaw('/wp-json/wc/v3');
   assert.equal(wc.response.ok, true, '/wp-json/wc/v3 should be public');
@@ -103,12 +126,31 @@ async function testStatusAndAuth() {
   });
   assert.equal(basicAuth.response.ok, true, 'Basic Auth should be accepted');
 
-  if (process.env.JWT_SECRET) {
-    const token = jwt.sign({ sub: 'woo-test', scope: 'read_write' }, process.env.JWT_SECRET, { expiresIn: '5m' });
-    const bearer = await requestRaw('/wp-json/wc/v3/products?per_page=1', {
-      headers: { authorization: `Bearer ${token}` },
+  if (jwtSecret && apiJwtUser && apiJwtPassword) {
+    const login = await requestRaw('/wp-json/jwt-auth/v1/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: apiJwtUser, password: apiJwtPassword }),
     });
-    assert.equal(bearer.response.ok, true, 'Bearer JWT should be accepted when JWT_SECRET is set');
+    assert.equal(login.response.ok, true, 'JWT login should return a token');
+    assert.equal(typeof login.body.token, 'string', 'JWT login should include token');
+    assert.equal(login.body.token_type, 'Bearer');
+
+    const bearer = await requestRaw('/wp-json/wc/v3/products?per_page=1', {
+      headers: { authorization: `Bearer ${login.body.token}` },
+    });
+    assert.equal(bearer.response.ok, true, 'Bearer JWT from login should be accepted');
+
+    const readOnlyToken = jwt.sign({ sub: 'woo-api', scope: 'read' }, jwtSecret, { expiresIn: '5m' });
+    const deniedWrite = await requestRaw('/wp-json/wc/v3/products', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${readOnlyToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ name: `Produto Negado ${runId}` }),
+    });
+    assert.equal(deniedWrite.response.status, 401, 'read-only JWT should not write');
   }
 }
 

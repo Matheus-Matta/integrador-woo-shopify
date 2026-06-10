@@ -208,6 +208,24 @@ Autenticacao aceita tres modos:
 Authorization: Bearer TOKEN
 ```
 
+Para gerar o token JWT da API:
+
+```bash
+curl -X POST "http://localhost:3005/wp-json/jwt-auth/v1/token" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"woo_api","password":"sua-senha"}'
+```
+
+Resposta:
+
+```json
+{
+  "token": "JWT",
+  "token_type": "Bearer",
+  "expires_in": "8h"
+}
+```
+
 ```text
 ?consumer_key=ck_local&consumer_secret=cs_local
 ```
@@ -220,15 +238,17 @@ Variaveis de ambiente novas:
 
 ```dotenv
 MONGODB_URI=mongodb://localhost:27017/integrador
-API_BASE_URL=http://localhost:3005
 JWT_SECRET=troque-este-segredo
+WOO_API_JWT_USER=woo_api
+WOO_API_JWT_PASSWORD=troque-esta-senha
+WOO_API_JWT_EXPIRES_IN=8h
 DEFAULT_CONSUMER_KEY=ck_local
 DEFAULT_CONSUMER_SECRET=cs_local
 WOO_COMPAT_SHOPIFY_SYNC_ACTIVE=true
 WOO_LEGACY_WEBHOOKS_ACTIVE=true
 ```
 
-`MONGODB_URL` continua funcionando; `MONGODB_URI` foi adicionado como alias. Para credenciais por banco, use a colecao `api_keys` com `consumer_key`, `consumer_secret`, `permissions` (`read`, `write` ou `read_write`) e `active=true`.
+`MONGODB_URL` continua funcionando; `MONGODB_URI` foi adicionado como alias. A URL publica da API vem de `DOMAIN`. Para credenciais por banco, use a colecao `api_keys` com `consumer_key`, `consumer_secret`, `permissions` (`read`, `write` ou `read_write`) e `active=true`.
 
 Quando `WOO_COMPAT_SHOPIFY_SYNC_ACTIVE=true`, os webhooks existentes do Shopify tambem salvam no MongoDB:
 
@@ -348,7 +368,7 @@ npm run test:shopify-webhook-sync
 Antes de rodar `npm run test:woo-api`, suba o app com `npm run dev` e deixe MongoDB acessivel. A suite de integracao valida:
 
 - status publico de `/wp-json` e `/wp-json/wc/v3`
-- bloqueio sem autenticacao, autenticacao por query string, Basic Auth e JWT quando `JWT_SECRET` estiver definido
+- bloqueio sem autenticacao, autenticacao por query string, Basic Auth e login JWT quando `JWT_SECRET`, `WOO_API_JWT_USER` e `WOO_API_JWT_PASSWORD` estiverem definidos
 - CRUD, filtros, paginacao e batch de products
 - variations, categories, tags, attributes e attribute terms
 - CRUD, filtro por e-mail e batch de customers

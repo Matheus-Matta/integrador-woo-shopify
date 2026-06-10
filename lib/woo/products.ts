@@ -68,7 +68,7 @@ function extractShopifyId(raw: WooRaw) {
 function normalizeRawProduct(input: WooRaw, wooId: number, existing?: ProductDocument | null): WooRaw {
   const created = stringValue(input.date_created) || stringValue(existing?.raw?.date_created) || nowIso();
   const modified = nowIso();
-  const baseUrl = (process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || process.env.DOMAIN || '').replace(/\/$/, '');
+  const baseUrl = (process.env.DOMAIN || process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || '').replace(/\/$/, '');
   const slug = stringValue(input.slug) || stringValue(existing?.slug) || stringValue(input.name)?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
   return {

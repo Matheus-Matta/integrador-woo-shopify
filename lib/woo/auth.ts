@@ -7,6 +7,12 @@ import { wooError } from './woo-errors';
 
 export type RequiredPermission = 'read' | 'write';
 
+interface WooJwtPayload extends jwt.JwtPayload {
+  scope?: string | string[];
+  scp?: string | string[];
+  permissions?: string | string[];
+}
+
 function safeEqual(input: string, expected: string) {
   const a = crypto.createHash('sha256').update(input).digest();
   const b = crypto.createHash('sha256').update(expected).digest();
@@ -49,23 +55,49 @@ async function validateConsumerKey(consumerKey: string, consumerSecret: string, 
   return safeEqual(consumerSecret, String(apiKey.consumer_secret)) && permissionAllows(apiKey.permissions, permission);
 }
 
-async function validateBearer(req: NextRequest) {
+function normalizeScopes(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeScopes(item));
+  }
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[\s,]+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
+
+function bearerAllows(decoded: string | jwt.JwtPayload, permission: RequiredPermission) {
+  if (!decoded || typeof decoded === 'string') return false;
+
+  const payload = decoded as WooJwtPayload;
+  if (payload.sub !== 'woo-api') return false;
+
+  const scopes = new Set([
+    ...normalizeScopes(payload.scope),
+    ...normalizeScopes(payload.scp),
+    ...normalizeScopes(payload.permissions),
+  ]);
+
+  return scopes.has('read_write') || scopes.has(permission);
+}
+
+async function validateBearer(req: NextRequest, permission: RequiredPermission) {
   const auth = req.headers.get('authorization') || '';
   if (!auth.toLowerCase().startsWith('bearer ')) return false;
 
-  const secret = process.env.JWT_SECRET || process.env.DASHBOARD_JWT_SECRET;
+  const secret = process.env.JWT_SECRET;
   if (!secret) return false;
 
   try {
-    jwt.verify(auth.slice(7), secret);
-    return true;
+    const decoded = jwt.verify(auth.slice(7), secret);
+    return bearerAllows(decoded, permission);
   } catch {
     return false;
   }
 }
 
 export async function requireWooAuth(req: NextRequest, permission: RequiredPermission) {
-  if (await validateBearer(req)) return null;
+  if (await validateBearer(req, permission)) return null;
 
   const queryKey = req.nextUrl.searchParams.get('consumer_key');
   const querySecret = req.nextUrl.searchParams.get('consumer_secret');

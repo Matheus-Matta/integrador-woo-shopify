@@ -14,6 +14,10 @@ export async function GET() {
       '/wp-json/wc/v3/products/tags': { methods: ['GET', 'POST'] },
       '/wp-json/wc/v3/products/attributes': { methods: ['GET', 'POST'] },
     },
-    authentication: ['Bearer JWT', 'consumer_key/consumer_secret query string', 'Basic Auth'],
+    authentication: [
+      'Bearer JWT from /wp-json/jwt-auth/v1/token',
+      'consumer_key/consumer_secret query string',
+      'Basic Auth',
+    ],
   });
 }
