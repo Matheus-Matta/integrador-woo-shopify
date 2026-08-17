@@ -267,14 +267,37 @@ function extractServiceId(rawName: string): string {
   return /^\d+$/.test(maybeId) ? maybeId : '';
 }
 
+function parseLocalizedPrice(v: unknown): number {
+  // parseExtraPrice já retorna number. Convertê-lo novamente como texto e
+  // remover os pontos transformava, por exemplo, 499.99 em 49999.
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+
+  const raw = String(v ?? '').trim().replace(/[^\d,.-]/g, '');
+  if (!raw) return 0;
+
+  const lastComma = raw.lastIndexOf(',');
+  const lastDot = raw.lastIndexOf('.');
+  let normalized = raw;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    // O último separador é o decimal; os anteriores são de milhar.
+    const decimalSeparator = lastComma > lastDot ? ',' : '.';
+    const thousandsSeparator = decimalSeparator === ',' ? /\./g : /,/g;
+    normalized = raw.replace(thousandsSeparator, '').replace(decimalSeparator, '.');
+  } else if (lastComma >= 0) {
+    normalized = raw.replace(/\./g, '').replace(',', '.');
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function formatPriceIntegerString(v: unknown): string {
-  const n = Number(String(v).replace(/\./g, '').replace(',', '.')) || 0;
-  return String(Math.round(n));
+  return String(Math.round(parseLocalizedPrice(v)));
 }
 
 function formatPriceDisplay(v: unknown): string {
-  const n = Number(String(v).replace(/\./g, '').replace(',', '.')) || 0;
-  return n.toFixed(2).replace('.', ',');
+  return parseLocalizedPrice(v).toFixed(2).replace('.', ',');
 }
 
 function normalizeServiceLabel(rawName: string): string {
