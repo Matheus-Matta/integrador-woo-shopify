@@ -239,8 +239,7 @@ export function getPaymentData(order: Record<string, unknown>): {
 function parseExtraPrice(rawValue: unknown): number {
   const match = s(rawValue).match(/(?:\[|\()\s*\+?\s*R\$\s*([\d.,]+)\s*(?:\]|\))/i);
   if (!match) return 0;
-  const parsed = Number(match[1].replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseLocalizedPrice(match[1]);
 }
 
 function isSelectedPaidService(rawValue: unknown, extraPrice: number): boolean {
@@ -292,8 +291,10 @@ function parseLocalizedPrice(v: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatPriceIntegerString(v: unknown): string {
-  return String(Math.round(parseLocalizedPrice(v)));
+function formatPriceValue(v: unknown): string {
+  // O EPOFW espera o valor monetário com ponto decimal. Arredondar aqui
+  // alterava 499,99 para 500 e fazia o plugin aplicar um preço incorreto.
+  return parseLocalizedPrice(v).toFixed(2);
 }
 
 function formatPriceDisplay(v: unknown): string {
@@ -328,7 +329,7 @@ export function buildEpofwMeta(
   const productId = s(item?.product_id ?? item?.sku ?? '');
   const extraPrice = parseExtraPrice(rawValue) || parseExtraPrice(rawName);
   if (!isSelectedPaidService(rawValue, extraPrice)) return null;
-  const priceInt = formatPriceIntegerString(extraPrice);
+  const priceValue = formatPriceValue(extraPrice);
   const priceDisplay = formatPriceDisplay(extraPrice);
   const labelTitle = normalizeServiceLabel(rawName);
   const labelClass = `epofw_label_${serviceId}`;
@@ -343,8 +344,8 @@ export function buildEpofwMeta(
         epofw_type: 'radiogroup',
         epofw_name: fieldKey,
         epofw_value: 'Sim',
-        epofw_price: priceInt,
-        epofw_original_price: priceInt,
+        epofw_price: priceValue,
+        epofw_original_price: priceValue,
         epofw_price_type: 'fixed',
         epofw_form_data: {
           field_status: 'on',
