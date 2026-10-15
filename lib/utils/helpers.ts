@@ -252,6 +252,26 @@ function isSelectedPaidService(rawValue: unknown, extraPrice: number): boolean {
   return extraPrice > 0;
 }
 
+function getSelectedServicePrice(prop: ItemProp): number {
+  const rawName = s(prop?.name);
+  const rawValue = s(prop?.value);
+  if (!rawName || rawName === '_tpo_add_by' || !extractServiceId(rawName)) return 0;
+
+  const extraPrice = parseExtraPrice(rawValue) || parseExtraPrice(rawName);
+  return isSelectedPaidService(rawValue, extraPrice) ? extraPrice : 0;
+}
+
+function getProductUnitPrice(item: LineItem): number {
+  const unitPrice = parseLocalizedPrice(item?.price);
+  const servicePrice = arrayOf<ItemProp>(item?.properties)
+    .reduce((total, prop) => total + getSelectedServicePrice(prop), 0);
+
+  // A Shopify incorpora os adicionais EPOFW no preco da linha. No Woo esses
+  // adicionais sao recriados via meta_data, portanto devem sair do produto
+  // para que o plugin nao os cobre duas vezes.
+  return Math.max(0, unitPrice - servicePrice);
+}
+
 function normalizeLabelTitle(rawName: string): string {
   const cleaned = s(rawName).replace(/^_+/, '');
   const parts = cleaned.split('_').filter(Boolean);
@@ -327,8 +347,8 @@ export function buildEpofwMeta(
 
   const fieldKey = `epofw_field_${serviceId}`;
   const productId = s(item?.product_id ?? item?.sku ?? '');
-  const extraPrice = parseExtraPrice(rawValue) || parseExtraPrice(rawName);
-  if (!isSelectedPaidService(rawValue, extraPrice)) return null;
+  const extraPrice = getSelectedServicePrice(prop);
+  if (!extraPrice) return null;
   const priceValue = formatPriceValue(extraPrice);
   const priceDisplay = formatPriceDisplay(extraPrice);
   const labelTitle = normalizeServiceLabel(rawName);
@@ -376,7 +396,7 @@ export function buildLineItems(order: Record<string, unknown>): Record<string, u
   const result: Record<string, unknown>[] = [];
   for (const item of arrayOf<LineItem>(order?.line_items)) {
     const quantity = Number(item?.quantity ?? 1) || 1;
-    const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
+    const unitPrice = getProductUnitPrice(item);
 
     // Desconto total do item (direto + allocations de cupom)
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
@@ -408,7 +428,7 @@ export function buildLineItemsForCoupons(order: Record<string, unknown>): Record
   const result: Record<string, unknown>[] = [];
   for (const item of arrayOf<LineItem>(order?.line_items)) {
     const quantity = Number(item?.quantity ?? 1) || 1;
-    const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
+    const unitPrice = getProductUnitPrice(item);
 
     // Apenas descontos diretos do item; ignora allocations de cupom
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
@@ -451,7 +471,7 @@ export function mergeLineItems(
   for (const item of shopifyItems) {
     const sku = s(item?.sku).toLowerCase();
     const quantity = Number(item?.quantity ?? 1) || 1;
-    const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
+    const unitPrice = getProductUnitPrice(item);
 
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
     const allocs = arrayOf<{ amount?: string }>(item?.discount_allocations);
@@ -517,7 +537,7 @@ export function mergeLineItemsForCoupons(
   for (const item of shopifyItems) {
     const sku = s(item?.sku).toLowerCase();
     const quantity = Number(item?.quantity ?? 1) || 1;
-    const unitPrice = Number(String(item?.price).replace(',', '.')) || 0;
+    const unitPrice = getProductUnitPrice(item);
 
     // Apenas desconto direto do item; ignora allocations de cupom
     const lineDiscount = Number(item?.total_discount ?? 0) || 0;
